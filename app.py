@@ -7,22 +7,29 @@ import io
 
 app = Flask(__name__)
 
-# --- CONFIGURACIÓN DE SEGURIDAD ---
-# Datos extraídos de tus credenciales para evitar fallos de firma JWT
+# --- CONFIGURACIÓN INTEGRAL DE CREDENCIALES ---
+# Se incluyen todos los campos del archivo original para evitar el error 'private_key_id'
 info_llave = {
   "type": "service_account",
   "project_id": "steel-time-331710",
+  "private_key_id": "262e240b07b546512b457ec41f2a418a36aa53ec",
   "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCyaP+mEwcJorvZ\nf/fRUTkH5eTaB/MOgShGChwRZfQxt2KPxiI/5EI3rLavWkCeEJ1Ad4N/Mn5jZ/yj\ns8HywpipBWCnJf+juPo5Vw3n3KaP0lhC/td7CFgBQpHhSXwm/dLBSNKwjVAkmlQJ\nyRc9MLta8Tsg8YcP3bkLEchsNivxtC5PQ8ic0X0Bw1fyI/8f1qqhRoqw710lSXFg\nVL6fuY4hvmY2TRVQKFqaLWymAziJw6gimdAshInP9ArYTzN0Oc38uUdS5gtV9+F3\nQwhYHBIT2oC1KXVf8uKjB6x4qusvqRLbd+utE6sJvcmXtBxjX3edacAI+uxRVvf1\nXznL8p+JAgMBAAECggEAIjF2gc1WxXV/fD2G8QKYpBdfB5yLbGW7osTQQVNhfF/R\nz41hRg6I1GPRNYVeKg00HkVpmejDCWlGJdfPXagHGynRLufc+XN73Z5+J0iGUb02\nNkziXo2oVEF+dQeg+FYgXPQIkVbcG8/KOH/maM9csR7XvsYbpSJREzqKx5aQUIfu\nfH9Q6k41DOzrsmm93nxSEEVjVym2hc6afYiYnpm9kbsZXrDG2nsi0mLpxoTfn0d1\nGQbornKo4SVw6qHcWuDbo6a3eeyBLRpKV968APSiSMAKamlYGcIHxhX1dxDUWwtf\nj3N/skW/oqSu0M2gAVNkdrt3v/w4AL8eALYIqOxtCwKBgQDciXM4yNnzC2mYI/bJ\nslz6dWU2xQZoL2w1822GzO1/EnHQk3kgVhn4B5ZdZ9f41s+JdFqavJvNm24zW4dY\nu4XOkQlsXV2EAisi/aph3NO3GI4e/Pab7ldnIVPaw2xPZ4KBVgXpbKyCB8QLp3pm\n+VKywKvpSG5a3QgZL2MNO4Uf7wKBgQDPGV9A43bnqbJn18RsIwIZfXz1IxIvQCwK\nb59R2K4TC36eYkmTq8LtVq86gO9qnnqZOU8KchKh8AO51MBLDGet7PVnceaWJxA6\nUarqIjP/7iftIQO/cf3vFkHi6MsO24dWRByZBGGJbIXVgnu1FtMf5zqqMw/3jjCh\nH49zzt1ABwKBgQCcOvcYJBlaNxx//gJHUobRmzavfRYT2nyDH8bYdvZMTem5A7AM\nO1K8Rcu8seLq0mpFitrgwXpyRojj8xRHxNh+xHpzfRTRfqPGbwMzvrdw/wE3bKbb\nQhZC5fY8hLKG8eIe86zOdwEiQJQeWW+54Sg3n4xpf7lFv02MYeh+qEqfmwKBgFe2\nikZkUJ8Lm3kpxJJ8PU5ofL0ibng+uKhu4E589DUywBz6yejWbYeyGCMyKrTAjHJK\n+HQXHlch3aIePpdKmLrsSn/WmO/teY0Ju9bQR6/UwWpIelriP8e8aIlfSWlwhyB9\nVpNkbJ8UrJZiXlyzXxX7DDi7yb5ypZwITuygp8qPAoGAToc4wBn0DkKjdHETfdd+\nNEsoU7gpYMiNv6rKNWY/3MUX+iFcrc7oWvPCZqr3iCuQY38DE+EbYhJne8iG8Ekr\n0ey7TqvLKSuHxlaatrbPsUjtRv2TDFbO1XquUwkvILSl48qoUWkbzIfpxr0ATeeF\nT/bRHOBL8kLrpeg6ARzpr+g=\n-----END PRIVATE KEY-----\n",
   "client_email": "robot-jupiter@steel-time-331710.iam.gserviceaccount.com",
-  "token_uri": "https://oauth2.googleapis.com/token"
+  "client_id": "114862181437476661415",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/robot-jupiter%40steel-time-331710.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
 }
 
 def obtener_hoja():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        # Conexión usando el diccionario completo
         creds = ServiceAccountCredentials.from_json_keyfile_dict(info_llave, scope)
         client = gspread.authorize(creds)
-        # Acceso directo al libro y pestaña indicados
+        # Apertura del libro y hoja específicos
         return client.open("Visitas_POC_Nestle").worksheet("Visitas")
     except Exception as e:
         return str(e)
@@ -35,6 +42,7 @@ def index():
     
     registros = []
     try:
+        # Se asume que la Fila 1 tiene los encabezados correctos
         registros = hoja.get_all_records()
     except:
         registros = []
@@ -45,33 +53,20 @@ def index():
     <head>
         <title>VISITAS A POC</title>
         <style>
-            body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; padding: 20px; margin: 0; }
+            body { font-family: 'Segoe UI', sans-serif; background: #f8f9fa; padding: 20px; }
             .container { max-width: 1200px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); }
-            .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; padding-bottom: 15px; margin-bottom: 20px; }
-            .logo-nestle { width: 120px; opacity: 0.5; filter: grayscale(100%); }
-            table { width: 100%; border-collapse: collapse; font-size: 11px; }
+            table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 20px; }
             th { background: #0056a0; color: white; padding: 12px; border: 1px solid #ddd; }
             td { padding: 10px; border: 1px solid #eee; text-align: center; }
-            .btn { padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: bold; display: inline-block; color: white; border: none; cursor: pointer; }
-            .btn-blue { background: #0056a0; }
-            .btn-green { background: #27ae60; margin-left: 10px; }
-            .chulo { color: #27ae60; font-weight: bold; font-size: 14px; }
-            .equis { color: #e74c3c; font-weight: bold; font-size: 14px; }
+            .btn { padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: bold; color: white; background: #0056a0; }
+            .chulo { color: #27ae60; font-weight: bold; }
+            .equis { color: #e74c3c; font-weight: bold; }
         </style>
     </head>
     <body>
         <div class="container">
-            <div class="header">
-                <div>
-                    <h1 style="margin:0;">VISITAS A POC</h1>
-                    <p style="margin:5px 0; color:#888;">Gestión de Puntos de Venta | Nestlé 2026</p>
-                </div>
-                <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/Nestle%CC%81_textlogo.svg/2560px-Nestle%CC%81_textlogo.svg.png" class="logo-nestle">
-            </div>
-            <div style="margin-bottom: 25px;">
-                <a href="/formulario" class="btn btn-blue">+ Registrar Visita</a>
-                <a href="/descargar_csv" class="btn btn-green">📥 Descargar CSV (;)</a>
-            </div>
+            <h1>VISITAS A POC - Nestlé</h1>
+            <a href="/formulario" class="btn">+ Nuevo Registro</a>
             <table>
                 <tr>
                     <th>ID PV</th><th>Punto de Venta</th><th>N. Doc</th><th>Nombre</th>
@@ -114,51 +109,25 @@ def formulario():
         return redirect('/')
 
     return render_template_string("""
-    <!DOCTYPE html>
-    <html>
-    <head><title>Nueva Visita</title>
-    <style>
-        body { font-family: sans-serif; background: #eef2f3; display: flex; justify-content: center; padding: 20px; }
-        form { background: white; padding: 25px; border-radius: 10px; width: 420px; box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
-        input, select, textarea { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
-        .btn-save { background: #27ae60; color: white; border: none; padding: 14px; width: 100%; cursor: pointer; font-weight: bold; border-radius: 6px; }
-        label { font-size: 12px; color: #666; font-weight: bold; margin-top: 5px; display: block; }
-    </style></head>
-    <body>
-        <form method="POST">
-            <h2 style="text-align:center; color:#333;">📝 Nueva Visita</h2>
-            <input type="text" name="id_pv" placeholder="ID Punto de Venta" required>
-            <input type="text" name="pv" placeholder="Nombre Punto de Venta" required>
-            <input type="text" name="doc" placeholder="N. Documento">
-            <input type="text" name="nombre" placeholder="Nombre completo">
-            <input type="text" name="mes" placeholder="MES (Ej: MARZO)" required>
-            <label>Fecha Visita:</label><input type="date" name="f_visita">
-            <input type="text" name="plan" placeholder="Plan">
-            <label>Fecha Registro:</label><input type="date" name="fecha">
-            <input type="text" name="cobertura" placeholder="Cobertura">
-            <label>Estado:</label>
-            <select name="estado">
-                <option value="-1">Positivo (Chulo ✅)</option>
-                <option value="">Déficit (X ❌)</option>
-            </select>
-            <textarea name="motivo" placeholder="Motivo"></textarea>
-            <button type="submit" class="btn-save">GUARDAR EN EXCEL</button>
-            <p style="text-align:center;"><a href="/" style="color:#999; text-decoration:none; font-size:12px;">Cancelar y volver</a></p>
-        </form>
-    </body>
-    </html>
+    <form method="POST" style="max-width:400px; margin:auto; padding:20px; font-family:sans-serif;">
+        <h2>Nueva Visita</h2>
+        <input type="text" name="id_pv" placeholder="ID PV" required style="width:100%; margin:5px 0; padding:8px;">
+        <input type="text" name="pv" placeholder="Punto de Venta" required style="width:100%; margin:5px 0; padding:8px;">
+        <input type="text" name="doc" placeholder="N. Documento" style="width:100%; margin:5px 0; padding:8px;">
+        <input type="text" name="nombre" placeholder="Nombre completo" style="width:100%; margin:5px 0; padding:8px;">
+        <input type="text" name="mes" placeholder="MES" required style="width:100%; margin:5px 0; padding:8px;">
+        <label>Fecha Visita:</label><input type="date" name="f_visita" style="width:100%; margin:5px 0; padding:8px;">
+        <input type="text" name="plan" placeholder="Plan" style="width:100%; margin:5px 0; padding:8px;">
+        <label>Fecha Registro:</label><input type="date" name="fecha" style="width:100%; margin:5px 0; padding:8px;">
+        <input type="text" name="cobertura" placeholder="Cobertura" style="width:100%; margin:5px 0; padding:8px;">
+        <select name="estado" style="width:100%; margin:5px 0; padding:8px;">
+            <option value="-1">Positivo (-1 ✅)</option>
+            <option value="">Déficit (Vacío ❌)</option>
+        </select>
+        <textarea name="motivo" placeholder="Motivo" style="width:100%; margin:5px 0; padding:8px;"></textarea>
+        <button type="submit" style="width:100%; background:#27ae60; color:white; padding:12px; border:none; cursor:pointer;">GUARDAR</button>
+    </form>
     """)
-
-@app.route('/descargar_csv')
-def descargar_csv():
-    hoja = obtener_hoja()
-    if isinstance(hoja, str): return "Error de conexión"
-    data = hoja.get_all_values()
-    output = io.StringIO()
-    writer = csv.writer(output, delimiter=';')
-    writer.writerows(data)
-    output.seek(0)
-    return Response(output, mimetype="text/csv", headers={"Content-disposition": "attachment; filename=Visitas_A_POC.csv"})
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
