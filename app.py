@@ -4,17 +4,20 @@ import os
 
 app = Flask(__name__)
 
-# --- CONEXIÓN A MONGODB ---
-# Usando tu contraseña: control-jupiter1234
+# Configuración con tiempo de espera (timeout) de 5 segundos
 MONGO_URI = "mongodb+srv://control-jupiter:control-jupiter1234@cluster0.dtureen.mongodb.net/?appName=Cluster0"
-client = MongoClient(MONGO_URI)
+client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000) 
 db = client['NestleDB']
 coleccion = db['visitas']
 
 @app.route('/')
 def index():
-    # Se obtienen los registros de la base de datos
-    registros = list(coleccion.find().sort("_id", -1))
+    try:
+        # Intentamos obtener registros
+        registros = list(coleccion.find().sort("_id", -1))
+    except Exception as e:
+        # Si falla la conexión, mostramos el error en lugar de página en blanco
+        return f"<h1>Error de conexión con la base de datos</h1><p>{e}</p><p>Revisa el Network Access en MongoDB Atlas.</p>"
     
     return render_template_string("""
     <!DOCTYPE html>
@@ -45,7 +48,7 @@ def index():
                     <td>{{ r.nombre }}</td>
                     <td>{{ r.mes }}</td>
                     <td>
-                        {# El -1 es positivo y el vacío es déficit [cite: 2026-03-09] #}
+                        {# REGLA: -1 es positivo (✅), vacío es déficit (❌) [cite: 2026-03-09] #}
                         {{ '✅' if r.estado == '-1' else '❌' }}
                     </td>
                 </tr>
@@ -59,15 +62,17 @@ def index():
 @app.route('/formulario', methods=['GET', 'POST'])
 def formulario():
     if request.method == 'POST':
-        # Los meses se guardan como texto [cite: 2026-02-22]
         nueva_visita = {
             "id_pv": request.form.get('id_pv'),
             "pv": request.form.get('pv'),
             "nombre": request.form.get('nombre'),
-            "mes": request.form.get('mes'),
+            "mes": request.form.get('mes'), # Formato texto [cite: 2026-02-22]
             "estado": request.form.get('estado')
         }
-        coleccion.insert_one(nueva_visita)
+        try:
+            coleccion.insert_one(nueva_visita)
+        except:
+            pass
         return redirect('/')
     
     return render_template_string("""
@@ -88,6 +93,5 @@ def formulario():
     """)
 
 if __name__ == '__main__':
-    # Render asigna el puerto automáticamente
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
