@@ -1,4 +1,3 @@
-flask
-gunicorn
-gspread
-oauth2client
+Flask
+pymongo
+dnspython
