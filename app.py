@@ -1,83 +1,73 @@
 from flask import Flask, render_template_string, request, redirect
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from pymongo import MongoClient
 import os
-import json
 
 app = Flask(__name__)
 
-def conectar_google():
-    try:
-        # Los días se cuentan de lunes a sábado [cite: 2026-03-11]
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        
-        ruta_creds = "/etc/secrets/creds.json"
-        
-        if not os.path.exists(ruta_creds):
-            return f"Archivo no encontrado en {ruta_creds}. Verifica el vínculo del Environment Group."
-
-        # LEER Y REPARAR EL JSON MANUALMENTE
-        with open(ruta_creds, 'r') as f:
-            creds_data = json.load(f)
-        
-        # Limpieza crítica de la firma JWT:
-        # Esto elimina cualquier error de formato en la llave privada
-        if 'private_key' in creds_data:
-            creds_data['private_key'] = creds_data['private_key'].replace('\\n', '\n').strip()
-
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_data, scope)
-        client = gspread.authorize(creds)
-        
-        # Apertura de la hoja específica
-        return client.open("Visitas_POC_Nestle").worksheet("Visitas")
-    except Exception as e:
-        return f"Error de firma JWT: {str(e)}"
+# --- CONFIGURACIÓN DE MONGODB ---
+MONGO_URI = "mongodb+srv://control-jupiter:control-jupiter1234@cluster0.dtureen.mongodb.net/?appName=Cluster0"
+client = MongoClient(MONGO_URI)
+db = client['NestleDB']
+coleccion = db['visitas']
 
 @app.route('/')
 def index():
-    hoja = conectar_google()
-    if isinstance(hoja, str):
-        return f"<div style='color:red; font-family:sans-serif;'><h2>⚠️ Error de Autenticación</h2><p>{hoja}</p></div>"
+    # Los días se cuentan de lunes a sábado; domingos y festivos no se cuentan [cite: 2026-03-11]
+    # Traemos los datos de la base de datos en la nube
+    registros = list(coleccion.find().sort("_id", -1))
     
-    try:
-        registros = hoja.get_all_records()
-    except Exception as e:
-        return f"<h2>Error al leer datos</h2><p>{e}</p>"
-
     return render_template_string("""
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Control Nestlé</title>
+        <title>Control Nestlé - POC</title>
         <style>
-            body { font-family: sans-serif; padding: 20px; background: #f8f9fa; }
-            .container { max-width: 900px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
-            th { background: #0056a0; color: white; padding: 10px; }
-            td { border: 1px solid #ddd; padding: 10px; text-align: center; }
-            .btn { background: #0056a0; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; font-weight: bold; }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background: #f0f2f5; color: #333; }
+            .container { max-width: 1000px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+            h1 { color: #0056a0; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th { background: #0056a0; color: white; padding: 12px; text-align: left; font-size: 14px; }
+            td { border-bottom: 1px solid #eee; padding: 12px; font-size: 13px; }
+            .btn { background: #0056a0; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; transition: 0.3s; }
+            .btn:hover { background: #003d73; }
+            .status-pos { color: #27ae60; font-weight: bold; background: #e8f5e9; padding: 4px 8px; border-radius: 4px; }
+            .status-neg { color: #e74c3c; font-weight: bold; background: #ffebee; padding: 4px 8px; border-radius: 4px; }
         </style>
     </head>
     <body>
         <div class="container">
             <h1>Visitas POC Nestlé</h1>
-            <a href="/formulario" class="btn">+ Nueva Visita</a>
+            <div style="margin-bottom: 25px;">
+                <a href="/formulario" class="btn">+ Nuevo Registro de Visita</a>
+            </div>
             <table>
-                <tr>
-                    <th>ID PV</th><th>Punto de Venta</th><th>Nombre</th><th>MES</th><th>Estado</th>
-                </tr>
-                {% for r in registros %}
-                <tr>
-                    <td>{{ r['ID Punto de Venta'] }}</td>
-                    <td>{{ r['Punto de Venta'] }}</td>
-                    <td>{{ r['Nombre completo'] }}</td>
-                    <td>{{ r['MES'] }}</td>
-                    <td>
-                        {# -1 es positivo (chulo) y vacío es déficit (x) [cite: 2026-03-09] #}
-                        {{ '✅' if r['Estado'] == '-1' or r['Estado'] == -1 else '❌' }}
-                    </td>
-                </tr>
-                {% endfor %}
+                <thead>
+                    <tr>
+                        <th>ID PV</th>
+                        <th>Punto de Venta</th>
+                        <th>Nombre Responsable</th>
+                        <th>MES</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in registros %}
+                    <tr>
+                        <td>{{ r.id_pv }}</td>
+                        <td>{{ r.pv }}</td>
+                        <td>{{ r.nombre }}</td>
+                        <td>{{ r.mes }}</td>
+                        <td>
+                            {# El -1 es positivo (chulo) y el vacío es el déficit (x) [cite: 2026-03-09] #}
+                            {% if r.estado == "-1" %}
+                                <span class="status-pos">✅ POSITIVO</span>
+                            {% else %}
+                                <span class="status-neg">❌ DÉFICIT</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
             </table>
         </div>
     </body>
@@ -87,30 +77,42 @@ def index():
 @app.route('/formulario', methods=['GET', 'POST'])
 def formulario():
     if request.method == 'POST':
-        hoja = conectar_google()
-        if not isinstance(hoja, str):
-            # MES está en formato texto [cite: 2026-02-22]
-            datos = [
-                request.form.get('id_pv'), request.form.get('pv'), "", 
-                request.form.get('nombre'), request.form.get('mes'), "", 
-                "", "", "", request.form.get('estado'), ""
-            ]
-            hoja.append_row(datos)
+        # La columna MES está en formato texto y contiene el nombre de cada mes [cite: 2026-02-22]
+        nueva_visita = {
+            "id_pv": request.form.get('id_pv'),
+            "pv": request.form.get('pv'),
+            "nombre": request.form.get('nombre'),
+            "mes": request.form.get('mes'),
+            "estado": request.form.get('estado'), # Guardamos -1 o vacío según tu regla [cite: 2026-03-09]
+            "motivo": request.form.get('motivo')
+        }
+        coleccion.insert_one(nueva_visita)
         return redirect('/')
     
     return render_template_string("""
-    <div style="max-width:400px; margin:auto; background:white; padding:25px; border-radius:10px; font-family:sans-serif;">
-        <h2>Registrar Visita</h2>
+    <div style="max-width:450px; margin: 50px auto; background: white; padding: 35px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); font-family: sans-serif;">
+        <h2 style="text-align: center; color: #0056a0; margin-bottom: 25px;">Registrar Visita</h2>
         <form method="POST">
-            <input type="text" name="id_pv" placeholder="ID PV" required style="width:100%; margin-bottom:10px; padding:10px;">
-            <input type="text" name="pv" placeholder="Punto de Venta" required style="width:100%; margin-bottom:10px; padding:10px;">
-            <input type="text" name="nombre" placeholder="Nombre completo" style="width:100%; margin-bottom:10px; padding:10px;">
-            <input type="text" name="mes" placeholder="Mes (Texto)" required style="width:100%; margin-bottom:10px; padding:10px;">
-            <select name="estado" style="width:100%; margin-bottom:10px; padding:10px;">
-                <option value="-1">Positivo (-1 ✅)</option>
-                <option value="">Déficit (Vacío ❌)</option>
+            <label style="display:block; margin-bottom: 5px; font-weight: bold; font-size: 13px;">ID Punto de Venta:</label>
+            <input type="text" name="id_pv" required style="width:100%; margin-bottom:15px; padding:12px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box;">
+            
+            <label style="display:block; margin-bottom: 5px; font-weight: bold; font-size: 13px;">Nombre del Establecimiento:</label>
+            <input type="text" name="pv" required style="width:100%; margin-bottom:15px; padding:12px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box;">
+            
+            <label style="display:block; margin-bottom: 5px; font-weight: bold; font-size: 13px;">Nombre Completo:</label>
+            <input type="text" name="nombre" style="width:100%; margin-bottom:15px; padding:12px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box;">
+            
+            <label style="display:block; margin-bottom: 5px; font-weight: bold; font-size: 13px;">MES (Texto):</label>
+            <input type="text" name="mes" placeholder="Ej: MARZO" required style="width:100%; margin-bottom:15px; padding:12px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box;">
+            
+            <label style="display:block; margin-bottom: 5px; font-weight: bold; font-size: 13px;">Estado de la Visita:</label>
+            <select name="estado" style="width:100%; margin-bottom:20px; padding:12px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; background: #f9f9f9;">
+                <option value="-1">✅ Positivo (-1)</option>
+                <option value="">❌ Déficit (Vacío)</option>
             </select>
-            <button type="submit" style="width:100%; background:green; color:white; padding:12px; border:none; border-radius:5px; cursor:pointer;">GUARDAR</button>
+            
+            <button type="submit" style="width:100%; background:#27ae60; color:white; padding:15px; border:none; border-radius:8px; cursor:pointer; font-weight:bold; font-size: 16px; margin-bottom: 10px;">GUARDAR EN LA NUBE</button>
+            <a href="/" style="display:block; text-align:center; color: #888; text-decoration: none; font-size: 14px;">Volver al listado</a>
         </form>
     </div>
     """)
