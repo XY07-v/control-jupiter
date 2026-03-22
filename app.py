@@ -2,48 +2,42 @@ from flask import Flask, render_template_string, request, redirect, Response
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import os
-import json
 import csv
 import io
 
 app = Flask(__name__)
 
+# --- CONFIGURACIÓN DIRECTA ---
+# Pegamos los datos de tu archivo credenciales.json.json aquí para evitar errores de firma JWT
+info_llave = {
+  "type": "service_account",
+  "project_id": "steel-time-331710",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCyaP+mEwcJorvZ\nf/fRUTkH5eTaB/MOgShGChwRZfQxt2KPxiI/5EI3rLavWkCeEJ1Ad4N/Mn5jZ/yj\ns8HywpipBWCnJf+juPo5Vw3n3KaP0lhC/td7CFgBQpHhSXwm/dLBSNKwjVAkmlQJ\nyRc9MLta8Tsg8YcP3bkLEchsNivxtC5PQ8ic0X0Bw1fyI/8f1qqhRoqw710lSXFg\nVL6fuY4hvmY2TRVQKFqaLWymAziJw6gimdAshInP9ArYTzN0Oc38uUdS5gtV9+F3\nQwhYHBIT2oC1KXVf8uKjB6x4qusvqRLbd+utE6sJvcmXtBxjX3edacAI+uxRVvf1\nXznL8p+JAgMBAAECggEAIjF2gc1WxXV/fD2G8QKYpBdfB5yLbGW7osTQQVNhfF/R\nz41hRg6I1GPRNYVeKg00HkVpmejDCWlGJdfPXagHGynRLufc+XN73Z5+J0iGUb02\nNkziXo2oVEF+dQeg+FYgXPQIkVbcG8/KOH/maM9csR7XvsYbpSJREzqKx5aQUIfu\nfH9Q6k41DOzrsmm93nxSEEVjVym2hc6afYiYnpm9kbsZXrDG2nsi0mLpxoTfn0d1\nGQbornKo4SVw6qHcWuDbo6a3eeyBLRpKV968APSiSMAKamlYGcIHxhX1dxDUWwtf\nj3N/skW/oqSu0M2gAVNkdrt3v/w4AL8eALYIqOxtCwKBgQDciXM4yNnzC2mYI/bJ\nslz6dWU2xQZoL2w1822GzO1/EnHQk3kgVhn4B5ZdZ9f41s+JdFqavJvNm24zW4dY\nu4XOkQlsXV2EAisi/aph3NO3GI4e/Pab7ldnIVPaw2xPZ4KBVgXpbKyCB8QLp3pm\n+VKywKvpSG5a3QgZL2MNO4Uf7wKBgQDPGV9A43bnqbJn18RsIwIZfXz1IxIvQCwK\nb59R2K4TC36eYkmTq8LtVq86gO9qnnqZOU8KchKh8AO51MBLDGet7PVnceaWJxA6\nUarqIjP/7iftIQO/cf3vFkHi6MsO24dWRByZBGGJbIXVgnu1FtMf5zqqMw/3jjCh\nH49zzt1ABwKBgQCcOvcYJBlaNxx//gJHUobRmzavfRYT2nyDH8bYdvZMTem5A7AM\nO1K8Rcu8seLq0mpFitrgwXpyRojj8xRHxNh+xHpzfRTRfqPGbwMzvrdw/wE3bKbb\nQhZC5fY8hLKG8eIe86zOdwEiQJQeWW+54Sg3n4xpf7lFv02MYeh+qEqfmwKBgFe2\nikZkUJ8Lm3kpxJJ8PU5ofL0ibng+uKhu4E589DUywBz6yejWbYeyGCMyKrTAjHJK\n+HQXHlch3aIePpdKmLrsSn/WmO/teY0Ju9bQR6/UwWpIelriP8e8aIlfSWlwhyB9\nVpNkbJ8UrJZiXlyzXxX7DDi7yb5ypZwITuygp8qPAoGAToc4wBn0DkKjdHETfdd+\nNEsoU7gpYMiNv6rKNWY/3MUX+iFcrc7oWvPCZqr3iCuQY38DE+EbYhJne8iG8Ekr\n0ey7TqvLKSuHxlaatrbPsUjtRv2TDFbO1XquUwkvILSl48qoUWkbzIfpxr0ATeeF\nT/bRHOBL8kLrpeg6ARzpr+g=\n-----END PRIVATE KEY-----\n",
+  "client_email": "robot-jupiter@steel-time-331710.iam.gserviceaccount.com",
+  "token_uri": "https://oauth2.googleapis.com/token",
+}
+
 def conectar_google():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        
-        # Leemos el archivo cargado
-        with open('credenciales.json.json', 'r') as f:
-            info_llave = json.load(f)
-        
-        # REPARACIÓN CRÍTICA: Limpia los saltos de línea mal formateados
-        # Esto soluciona el error 'Invalid JWT Signature'
-        info_llave['private_key'] = info_llave['private_key'].replace('\\n', '\n')
-        
+        # Usamos la configuración directa que ya tiene los saltos de línea corregidos
         creds = ServiceAccountCredentials.from_json_keyfile_dict(info_llave, scope)
         client = gspread.authorize(creds)
-        
-        # Conexión al libro y hoja configurados
-        libro = client.open("Visitas_POC_Nestle")
-        hoja = libro.worksheet("Visitas")
-        return hoja
+        # Accedemos al libro y hoja indicados
+        return client.open("Visitas_POC_Nestle").worksheet("Visitas")
     except Exception as e:
-        print(f"ERROR TÉCNICO: {e}")
         return str(e)
 
 @app.route('/')
 def index():
     hoja = conectar_google()
-    
     if isinstance(hoja, str):
-        return f"<h1>Error de Conexión</h1><p>Detalle: {hoja}</p><p>Verifica que el robot tenga acceso a la hoja.</p>"
+        return f"<h2 style='color:red'>Error de Conexión Técnica</h2><p>{hoja}</p>"
     
     registros = []
     try:
-        # Trae los registros basados en los encabezados de la Fila 1
         registros = hoja.get_all_records()
-    except Exception as e:
-        print(f"Error de lectura: {e}")
+    except:
         registros = []
 
     return render_template_string("""
@@ -52,55 +46,31 @@ def index():
     <head>
         <title>VISITAS A POC</title>
         <style>
-            body { font-family: 'Segoe UI', sans-serif; background: #f8f9fa; padding: 20px; }
-            .container { max-width: 1100px; margin: auto; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
-            .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; margin-bottom: 20px; }
-            .logo-nestle { width: 100px; opacity: 0.4; filter: grayscale(100%); }
-            table { width: 100%; border-collapse: collapse; font-size: 11px; }
-            th { background: #0056a0; color: white; padding: 12px; border: 1px solid #ddd; }
-            td { padding: 10px; border: 1px solid #eee; text-align: center; }
-            .btn { padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: bold; display: inline-block; border: none; font-size: 13px; }
-            .btn-blue { background: #0056a0; color: white; }
-            .btn-green { background: #27ae60; color: white; margin-left: 10px; }
-            .chulo { color: #27ae60; font-weight: bold; }
-            .equis { color: #e74c3c; font-weight: bold; }
+            body { font-family: sans-serif; background: #f4f7f6; padding: 20px; }
+            .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+            th { background: #0056a0; color: white; padding: 10px; }
+            td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+            .btn { background: #0056a0; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; }
         </style>
     </head>
     <body>
-        <div class="container">
-            <div class="header">
-                <div>
-                    <h1 style="margin:0;">VISITAS A POC</h1>
-                    <p style="margin:5px 0; color:#666;">Nestlé - Control de Gestión</p>
-                </div>
-                <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/Nestle%CC%81_textlogo.svg/2560px-Nestle%CC%81_textlogo.svg.png" class="logo-nestle">
+        <div class="card">
+            <h1>VISITAS A POC - Nestlé</h1>
+            <div style="margin-bottom:20px;">
+                <a href="/formulario" class="btn">+ Nuevo Registro</a>
             </div>
-
-            <div style="margin-bottom: 20px;">
-                <a href="/formulario" class="btn btn-blue">+ Registrar Visita</a>
-                <a href="/descargar_csv" class="btn btn-green">📥 Descargar CSV (;)</a>
-            </div>
-
             <table>
                 <tr>
-                    <th>ID PV</th><th>Punto de Venta</th><th>N. Documento</th><th>Nombre completo</th>
-                    <th>MES</th><th>Visita</th><th>Plan</th><th>Fecha</th><th>Cobertura</th><th>Estado</th><th>Motivo</th>
+                    <th>ID PV</th><th>Punto de Venta</th><th>Nombre</th><th>MES</th><th>Estado</th>
                 </tr>
                 {% for r in registros %}
                 <tr>
                     <td>{{ r['ID Punto de Venta'] }}</td>
                     <td>{{ r['Punto de Venta'] }}</td>
-                    <td>{{ r['N. Documento'] }}</td>
                     <td>{{ r['Nombre completo'] }}</td>
                     <td>{{ r['MES'] }}</td>
-                    <td>{{ r['Fecha Visita'] }}</td>
-                    <td>{{ r['Plan'] }}</td>
-                    <td>{{ r['Fecha'] }}</td>
-                    <td>{{ r['Cobertura'] }}</td>
-                    <td class="{{ 'chulo' if r['Estado'] == '-1' or r['Estado'] == -1 else 'equis' }}">
-                        {{ '✅' if r['Estado'] == '-1' or r['Estado'] == -1 else '❌' }}
-                    </td>
-                    <td>{{ r['Motivo'] }}</td>
+                    <td>{{ '✅' if r['Estado'] == '-1' or r['Estado'] == -1 else '❌' }}</td>
                 </tr>
                 {% endfor %}
             </table>
@@ -122,41 +92,29 @@ def formulario():
                 request.form.get('cobertura'), request.form.get('estado'),
                 request.form.get('motivo')
             ]
-            # Guarda la nueva fila en Google Sheets
             hoja.append_row(datos)
         return redirect('/')
 
     return render_template_string("""
-    <form method="POST" style="max-width:400px; margin:auto; padding:20px; font-family:sans-serif;">
-        <h2>📝 Nueva Visita</h2>
-        <input type="text" name="id_pv" placeholder="ID PV" required style="width:100%; margin:5px 0; padding:10px;">
-        <input type="text" name="pv" placeholder="Punto de Venta" required style="width:100%; margin:5px 0; padding:10px;">
-        <input type="text" name="doc" placeholder="N. Documento" style="width:100%; margin:5px 0; padding:10px;">
-        <input type="text" name="nombre" placeholder="Nombre completo" style="width:100%; margin:5px 0; padding:10px;">
-        <input type="text" name="mes" placeholder="MES (Texto)" required style="width:100%; margin:5px 0; padding:10px;">
-        <label>Fecha Visita:</label><input type="date" name="f_visita" style="width:100%; margin:5px 0; padding:10px;">
-        <input type="text" name="plan" placeholder="Plan" style="width:100%; margin:5px 0; padding:10px;">
-        <label>Fecha Actual:</label><input type="date" name="fecha" style="width:100%; margin:5px 0; padding:10px;">
-        <input type="text" name="cobertura" placeholder="Cobertura" style="width:100%; margin:5px 0; padding:10px;">
-        <select name="estado" style="width:100%; margin:5px 0; padding:10px;">
+    <form method="POST" style="max-width:400px; margin:auto; font-family:sans-serif; background:white; padding:30px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.2);">
+        <h2 style="text-align:center">Nueva Visita</h2>
+        <input type="text" name="id_pv" placeholder="ID Punto Venta" required style="width:100%; margin:8px 0; padding:10px;">
+        <input type="text" name="pv" placeholder="Nombre Punto Venta" required style="width:100%; margin:8px 0; padding:10px;">
+        <input type="text" name="doc" placeholder="N. Documento" style="width:100%; margin:8px 0; padding:10px;">
+        <input type="text" name="nombre" placeholder="Nombre completo" style="width:100%; margin:8px 0; padding:10px;">
+        <input type="text" name="mes" placeholder="MES (Texto)" required style="width:100%; margin:8px 0; padding:10px;">
+        <label>Fecha Visita:</label><input type="date" name="f_visita" style="width:100%; margin:8px 0; padding:10px;">
+        <input type="text" name="plan" placeholder="Plan" style="width:100%; margin:8px 0; padding:10px;">
+        <label>Fecha Registro:</label><input type="date" name="fecha" style="width:100%; margin:8px 0; padding:10px;">
+        <input type="text" name="cobertura" placeholder="Cobertura" style="width:100%; margin:8px 0; padding:10px;">
+        <select name="estado" style="width:100%; margin:8px 0; padding:10px;">
             <option value="-1">Positivo (-1 ✅)</option>
             <option value="">Déficit (Vacío ❌)</option>
         </select>
-        <textarea name="motivo" placeholder="Motivo" style="width:100%; margin:5px 0; padding:10px;"></textarea>
-        <button type="submit" style="width:100%; background:#27ae60; color:white; padding:15px; border:none; cursor:pointer;">GUARDAR EN GOOGLE</button>
+        <textarea name="motivo" placeholder="Motivo" style="width:100%; margin:8px 0; padding:10px;"></textarea>
+        <button type="submit" style="width:100%; background:#27ae60; color:white; padding:15px; border:none; border-radius:5px; cursor:pointer; font-weight:bold;">GUARDAR EN GOOGLE</button>
     </form>
     """)
-
-@app.route('/descargar_csv')
-def descargar_csv():
-    hoja = conectar_google()
-    if isinstance(hoja, str): return "Error"
-    valores = hoja.get_all_values()
-    output = io.StringIO()
-    writer = csv.writer(output, delimiter=';')
-    writer.writerows(valores)
-    output.seek(0)
-    return Response(output, mimetype="text/csv", headers={"Content-disposition": "attachment; filename=Visitas_A_POC.csv"})
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
