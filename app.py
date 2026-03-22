@@ -1,99 +1,63 @@
-from flask import Flask, render_template_string, request, redirect, Response
-import csv
-import io
-import os
+from flask import Flask, render_template_string, request, redirect
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+import os
 
 app = Flask(__name__)
 
-# --- CONFIGURACIÓN DE GOOGLE SHEETS ---
-def conectar_google():
+def conectar():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        # El archivo debe llamarse credenciales.json en tu carpeta de Render/GitHub
+        # Verifica que el archivo se llame exactamente así en tu carpeta
         creds = ServiceAccountCredentials.from_json_keyfile_name('credenciales.json', scope)
         client = gspread.authorize(creds)
-        
-        # AJUSTE SOLICITADO: Libro "Visitas_POC_Nestle" y Hoja "Visitas"
-        libro = client.open("Visitas_POC_Nestle")
-        hoja = libro.worksheet("Visitas")
-        return hoja
+        # Nombre exacto del libro y la hoja
+        return client.open("Visitas_POC_Nestle").worksheet("Visitas")
     except Exception as e:
-        print(f"Error de conexión: {e}")
-        return None
+        print(f"ERROR DE CONEXIÓN: {e}")
+        return str(e)
 
-# Intentamos la conexión inicial
-hoja_google = conectar_google()
-
-# --- VISTA PRINCIPAL (TABLA) ---
 @app.route('/')
 def index():
-    # Recargamos la conexión por si hubo pérdida de sesión
-    global hoja_google
-    if not hoja_google:
-        hoja_google = conectar_google()
-        
-    registros = []
-    if hoja_google:
-        try:
-            # Trae todos los datos de la hoja usando los encabezados de la Fila 1
-            registros = hoja_google.get_all_records()
-        except Exception as e:
-            print(f"Error leyendo datos: {e}")
+    hoja = conectar()
+    if isinstance(hoja, str):
+        return f"<h1>Error de Configuración</h1><p>{hoja}</p><p>Revisa el nombre del archivo y permisos.</p>"
     
+    try:
+        # Leemos los datos para la tabla
+        registros = hoja.get_all_records()
+    except:
+        registros = []
+
     return render_template_string("""
     <!DOCTYPE html>
     <html>
     <head>
         <title>VISITAS A POC</title>
         <style>
-            body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; padding: 20px; }
-            .container { max-width: 1200px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); }
-            .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; padding-bottom: 15px; }
-            .logo-nestle { width: 120px; opacity: 0.5; filter: grayscale(100%); }
-            table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 20px; }
-            th { background: #0056a0; color: white; padding: 10px; border: 1px solid #ddd; }
-            td { padding: 8px; border: 1px solid #eee; text-align: center; }
-            .btn { padding: 8px 15px; border-radius: 5px; text-decoration: none; font-weight: bold; display: inline-block; border: none; }
-            .btn-new { background: #0056a0; color: white; }
-            .btn-csv { background: #27ae60; color: white; margin-left: 10px; }
-            .chulo { color: #27ae60; font-weight: bold; }
-            .equis { color: #e74c3c; font-weight: bold; }
+            body { font-family: sans-serif; padding: 20px; background: #f4f4f4; }
+            .container { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
+            th { background: #0056a0; color: white; }
+            .btn { background: #0056a0; color: white; padding: 10px; text-decoration: none; border-radius: 5px; }
         </style>
     </head>
     <body>
         <div class="container">
-            <div class="header">
-                <div>
-                    <h1>VISITAS A POC</h1>
-                    <p style="color:#888;">Gestión de Puntos de Venta | Nestlé 2026</p>
-                </div>
-                <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/Nestle%CC%81_textlogo.svg/2560px-Nestle%CC%81_textlogo.svg.png" class="logo-nestle">
-            </div>
-
-            <div style="margin: 20px 0;">
-                <a href="/formulario" class="btn btn-new">+ Registrar Visita</a>
-                <a href="/descargar_csv" class="btn btn-csv">📥 Descargar CSV (;)</a>
-            </div>
-
+            <h1>VISITAS A POC (Nestlé)</h1>
+            <a href="/formulario" class="btn">+ Nuevo Registro</a>
             <table>
                 <tr>
-                    <th>ID PV</th><th>Punto de Venta</th><th>N. Doc</th><th>Nombre</th>
-                    <th>MES</th><th>Visita</th><th>Plan</th><th>Fecha</th>
-                    <th>Cobertura</th><th>Estado</th><th>Motivo</th>
+                    <th>ID PV</th><th>Punto de Venta</th><th>Nombre</th><th>MES</th><th>Estado</th>
                 </tr>
                 {% for r in registros %}
                 <tr>
-                    <td>{{ r['ID Punto de Venta'] }}</td><td>{{ r['Punto de Venta'] }}</td>
-                    <td>{{ r['N. Documento'] }}</td><td>{{ r['Nombre completo'] }}</td>
-                    <td>{{ r['MES'] }}</td><td>{{ r['Fecha Visita'] }}</td>
-                    <td>{{ r['Plan'] }}</td><td>{{ r['Fecha'] }}</td>
-                    <td>{{ r['Cobertura'] }}</td>
-                    <td class="{{ 'chulo' if r['Estado'] == '-1' else 'equis' }}">
-                        {{ '✅' if r['Estado'] == '-1' else '❌' }}
-                    </td>
-                    <td>{{ r['Motivo'] }}</td>
+                    <td>{{ r['ID Punto de Venta'] }}</td>
+                    <td>{{ r['Punto de Venta'] }}</td>
+                    <td>{{ r['Nombre completo'] }}</td>
+                    <td>{{ r['MES'] }}</td>
+                    <td>{{ '✅' if r['Estado'] == '-1' or r['Estado'] == -1 else '❌' }}</td>
                 </tr>
                 {% endfor %}
             </table>
@@ -102,65 +66,46 @@ def index():
     </html>
     """, registros=registros)
 
-# --- FORMULARIO ---
 @app.route('/formulario', methods=['GET', 'POST'])
 def formulario():
     if request.method == 'POST':
+        hoja = conectar()
+        # Recolectamos datos del formulario
         datos = [
-            request.form['id_pv'], request.form['pv'], request.form['doc'],
-            request.form['nombre'], request.form['mes'], request.form['f_visita'],
-            request.form['plan'], request.form['fecha'], request.form['cobertura'],
-            request.form['estado'], request.form['motivo']
+            request.form.get('id_pv'), request.form.get('pv'), 
+            request.form.get('doc'), request.form.get('nombre'),
+            request.form.get('mes'), request.form.get('f_visita'),
+            request.form.get('plan'), request.form.get('fecha'),
+            request.form.get('cobertura'), request.form.get('estado'),
+            request.form.get('motivo')
         ]
-        if hoja_google:
-            hoja_google.append_row(datos)
-        return redirect('/')
+        try:
+            hoja.append_row(datos)
+            return redirect('/')
+        except Exception as e:
+            return f"<h1>Error al guardar</h1><p>{e}</p>"
 
     return render_template_string("""
-    <!DOCTYPE html>
-    <html>
-    <head><title>Nueva Visita</title>
-    <style>
-        body { font-family: sans-serif; background: #eef2f3; display: flex; justify-content: center; padding: 20px; }
-        form { background: white; padding: 25px; border-radius: 10px; width: 400px; box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
-        input, select, textarea { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
-        .btn { background: #27ae60; color: white; border: none; padding: 12px; width: 100%; cursor: pointer; font-weight: bold; border-radius: 5px; }
-    </style>
-    </head>
-    <body>
-        <form method="POST">
-            <h2 style="text-align:center;">📝 Nueva Visita</h2>
-            <input type="text" name="id_pv" placeholder="ID Punto de Venta" required>
-            <input type="text" name="pv" placeholder="Punto de Venta" required>
-            <input type="text" name="doc" placeholder="N. Documento">
-            <input type="text" name="nombre" placeholder="Nombre completo">
-            <input type="text" name="mes" placeholder="MES (Texto)" required>
-            <input type="date" name="f_visita">
-            <input type="text" name="plan" placeholder="Plan">
-            <input type="date" name="fecha">
-            <input type="text" name="cobertura" placeholder="Cobertura">
-            <select name="estado">
-                <option value="-1">Positivo (Chulo ✅)</option>
-                <option value="0">Déficit (X ❌)</option>
-            </select>
-            <textarea name="motivo" placeholder="Motivo"></textarea>
-            <button type="submit" class="btn">GUARDAR EN GOOGLE SHEETS</button>
-            <p style="text-align:center;"><a href="/" style="color:#999; font-size:12px;">Volver</a></p>
-        </form>
-    </body>
-    </html>
+    <form method="POST" style="max-width:400px; margin:auto; padding:20px; border:1px solid #ccc;">
+        <h2>Nueva Visita</h2>
+        ID PV: <input type="text" name="id_pv" required><br><br>
+        Punto Venta: <input type="text" name="pv" required><br><br>
+        N. Doc: <input type="text" name="doc"><br><br>
+        Nombre: <input type="text" name="nombre"><br><br>
+        MES: <input type="text" name="mes" value="MARZO"><br><br>
+        Fecha Visita: <input type="date" name="f_visita"><br><br>
+        Plan: <input type="text" name="plan"><br><br>
+        Fecha: <input type="date" name="fecha"><br><br>
+        Cobertura: <input type="text" name="cobertura"><br><br>
+        Estado: 
+        <select name="estado">
+            <option value="-1">Positivo (-1)</option>
+            <option value="">Déficit (Vacío)</option>
+        </select><br><br>
+        Motivo: <textarea name="motivo"></textarea><br><br>
+        <button type="submit">GUARDAR EN GOOGLE</button>
+    </form>
     """)
-
-# --- DESCARGA CSV ---
-@app.route('/descargar_csv')
-def descargar_csv():
-    if not hoja_google: return "Error: Sin conexión"
-    data = hoja_google.get_all_values()
-    output = io.StringIO()
-    writer = csv.writer(output, delimiter=';')
-    writer.writerows(data)
-    output.seek(0)
-    return Response(output, mimetype="text/csv", headers={"Content-disposition": "attachment; filename=Visitas_A_POC.csv"})
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
