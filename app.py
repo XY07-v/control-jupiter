@@ -5,38 +5,37 @@ import base64, io, csv
 
 app = Flask(__name__)
 
-# 1. Configuración de MongoDB
+# --- CONFIGURACIÓN DE MONGODB ---
 MONGO_URI = "mongodb+srv://control-jupiter:control-jupiter1234@cluster0.dtureen.mongodb.net/NestleDB?retryWrites=true&w=majority"
 client = MongoClient(MONGO_URI)
 db = client['NestleDB']
 coleccion = db['visitas']
 
-# 2. Funciones de Apoyo
-def limpiar_id(doc):
+# --- FUNCIONES DE UTILIDAD ---
+def procesar_registro(doc):
     doc['_id'] = str(doc['_id'])
-    # Lógica BMB: -1 es ✅, vacío es ❌
     val = str(doc.get('bmb', '')).strip()
     if val == "-1":
-        doc['bmb_display'] = "✅"
+        doc['bmb_icon'] = "✅"
     elif val == "":
-        doc['bmb_display'] = "❌"
+        doc['bmb_icon'] = "❌"
     else:
-        doc['bmb_display'] = val
+        doc['bmb_icon'] = val
     return doc
 
-FOOTER_HTML = """
-<footer style="margin-top: 30px; padding: 20px; text-align: center; border-top: 0.5px solid #C6C6C8; color: #8E8E93; font-size: 12px;">
+FOOTER = """
+<footer style="margin-top:30px; padding:20px; text-align:center; border-top:0.5px solid #C6C6C8; color:#8E8E93; font-size:12px;">
     Desarrollo de <b>Andres Vanegas - Business Intelligence</b> <br>
     © 2026 Todos los derechos reservados.
 </footer>
 """
 
-# 3. Ruta Principal (Lista de Visitas)
+# --- RUTA 1: LISTA PRINCIPAL (CARGA RÁPIDA) ---
 @app.route('/')
 def index():
-    # Traemos datos de texto. f_bmb y f_fachada se excluyen aquí para optimizar carga.
+    # EXCLUIMOS f_bmb y f_fachada para que cargue instantáneo
     cursor = coleccion.find({}, {"f_bmb": 0, "f_fachada": 0}).sort("fecha", -1)
-    registros = [limpiar_id(r) for r in cursor]
+    registros = [procesar_registro(r) for r in cursor]
     
     return render_template_string(f"""
     <!DOCTYPE html>
@@ -48,8 +47,8 @@ def index():
         <style>
             body {{ font-family: -apple-system, sans-serif; background: #F2F2F7; margin: 0; padding: 15px; }}
             .header {{ padding: 15px; background: white; border-radius: 15px; margin-bottom: 15px; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }}
-            .btn-group {{ display: flex; justify-content: space-between; margin-bottom: 20px; }}
-            .btn {{ padding: 15px; border-radius: 12px; text-decoration: none; font-weight: 700; width: 46%; text-align: center; display: inline-block; }}
+            .nav {{ display: flex; justify-content: space-between; margin-bottom: 20px; }}
+            .btn {{ padding: 15px; border-radius: 12px; text-decoration: none; font-weight: 700; width: 46%; text-align: center; }}
             .btn-blue {{ background: #007AFF; color: white; }}
             .btn-white {{ background: white; color: #1C1C1E; border: 1px solid #D1D1D6; }}
             .list {{ background: white; border-radius: 15px; overflow: hidden; }}
@@ -57,12 +56,12 @@ def index():
             .modal {{ display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; align-items: flex-end; }}
             .modal-content {{ background: white; width: 100%; border-radius: 20px 20px 0 0; padding: 25px; box-sizing: border-box; max-height: 90vh; overflow-y: auto; }}
             #map {{ height: 200px; width: 100%; border-radius: 12px; margin-top: 15px; display: none; }}
-            .img-prev {{ width: 100%; border-radius: 12px; margin-top: 10px; display: none; border: 1px solid #ddd; }}
+            .img-box {{ width: 100%; border-radius: 12px; margin-top: 10px; display: none; border: 1px solid #ddd; }}
         </style>
     </head>
     <body>
         <div class="header">Visitas a POC - Control 📍</div>
-        <div class="btn-group">
+        <div class="nav">
             <a href="/formulario" class="btn btn-blue">＋ REGISTRAR</a>
             <a href="/descargar" class="btn btn-white">💾 EXCEL</a>
         </div>
@@ -73,7 +72,7 @@ def index():
                     <h4 style="margin:0;">{{{{ r.pv }}}}</h4>
                     <small style="color: #8E8E93;">{{{{ r.fecha }}}} | {{{{ r.mes }}}}</small>
                 </div>
-                <div style="font-size: 20px;">{{{{ r.bmb_display }}}}</div>
+                <div style="font-size: 20px;">{{{{ r.bmb_icon }}}}</div>
             </div>
             {{% endfor %}}
         </div>
@@ -84,87 +83,85 @@ def index():
                 <button onclick="document.getElementById('modal').style.display='none'" style="width:100%; padding:15px; margin-top:20px; border:none; border-radius:12px; background:#F2F2F7; font-weight:700; color:red;">Cerrar</button>
             </div>
         </div>
-        {FOOTER_HTML}
+        {FOOTER}
 
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
         <script>
-            let mapInstance = null;
+            let mapObj = null;
             function verDetalle(d) {{
                 document.getElementById('cont').innerHTML = `
                     <h3>${{d.pv}}</h3>
                     <p><b>Mes:</b> ${{d.mes}}<br><b>Doc:</b> ${{d.n_documento}}<br><b>Motivo:</b> ${{d.motivo}}</p>
-                    <button id="btn-f" onclick="cargarFotos('${{d._id}}','${{d.ubicacion}}')" style="width:100%; padding:14px; color:#007AFF; border:2px solid #007AFF; background:none; border-radius:12px; font-weight:700;">👁️ VER FOTOS Y MAPA</button>
+                    <button id="btn-load" onclick="getImages('${{d._id}}','${{d.ubicacion}}')" style="width:100%; padding:14px; color:#007AFF; border:2px solid #007AFF; background:none; border-radius:12px; font-weight:700;">👁️ VER FOTOS Y MAPA</button>
                     <div id="map"></div>
-                    <img id="f1" class="img-prev">
-                    <img id="f2" class="img-prev">
+                    <img id="img1" class="img-box">
+                    <img id="img2" class="img-box">
                 `;
                 document.getElementById('modal').style.display='flex';
             }}
 
-            async function cargarFotos(id, coords) {{
-                const btn = document.getElementById('btn-f');
-                btn.innerText = "Cargando...";
-                const res = await fetch('/obtener_evidencia/' + id);
-                const j = await res.json();
+            async function getImages(id, coords) {{
+                const b = document.getElementById('btn-load');
+                b.innerText = "Consultando base de datos...";
+                const res = await fetch('/get_img/' + id);
+                const data = await res.json();
                 
-                if(j.f1) {{ document.getElementById('f1').src=j.f1; document.getElementById('f1').style.display='block'; }}
-                if(j.f2) {{ document.getElementById('f2').src=j.f2; document.getElementById('f2').style.display='block'; }}
+                if(data.f1) {{ document.getElementById('img1').src=data.f1; document.getElementById('img1').style.display='block'; }}
+                if(data.f2) {{ document.getElementById('img2').src=data.f2; document.getElementById('img2').style.display='block'; }}
 
                 if(coords) {{
                     document.getElementById('map').style.display='block';
-                    const c = coords.split(',').map(Number);
-                    if(mapInstance) mapInstance.remove();
-                    mapInstance = L.map('map').setView(c, 16);
-                    L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png').addTo(mapInstance);
-                    L.marker(c).addTo(mapInstance);
-                    setTimeout(() => mapInstance.invalidateSize(), 200);
+                    const loc = coords.split(',').map(Number);
+                    if(mapObj) mapObj.remove();
+                    mapObj = L.map('map').setView(loc, 16);
+                    L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png').addTo(mapObj);
+                    L.marker(loc).addTo(mapObj);
+                    setTimeout(() => mapObj.invalidateSize(), 300);
                 }}
-                btn.style.display='none';
+                b.style.display='none';
             }}
         </script>
     </body>
     </html>
     """, registros=registros)
 
-# 4. Ruta para obtener fotos (Base64)
-@app.route('/obtener_evidencia/<id>')
-def obtener_evidencia(id):
-    d = coleccion.find_one({"_id": ObjectId(id)}, {"f_bmb": 1, "f_fachada": 1})
-    return jsonify({"f1": d.get('f_bmb'), "f2": d.get('f_fachada')})
+# --- RUTA 2: CONSULTA DE IMÁGENES (SOLO CUANDO SE PIDE) ---
+@app.route('/get_img/<id>')
+def get_img(id):
+    doc = coleccion.find_one({"_id": ObjectId(id)}, {"f_bmb": 1, "f_fachada": 1})
+    return jsonify({"f1": doc.get('f_bmb'), "f2": doc.get('f_fachada')})
 
-# 5. Ruta del Formulario (Registro)
+# --- RUTA 3: NUEVO REGISTRO ---
 @app.route('/formulario', methods=['GET', 'POST'])
 def formulario():
     if request.method == 'POST':
         try:
-            def enc(f):
-                if f and f.filename != '':
-                    return f"data:{f.content_type};base64,{base64.b64encode(f.read()).decode()}"
+            def to_base64(file):
+                if file and file.filename != '':
+                    return f"data:{file.content_type};base64,{base64.b64encode(file.read()).decode()}"
                 return ""
 
-            fecha_val = request.form.get('fecha')
-            mes_val = fecha_val[:7] if fecha_val else "" # Extrae YYYY-MM
-
+            f = request.form.get('fecha')
             coleccion.insert_one({
                 "pv": request.form.get('pv'),
                 "n_documento": request.form.get('n_documento'),
-                "fecha": fecha_val,
-                "mes": mes_val,
+                "fecha": f,
+                "mes": f[:7] if f else "",
                 "bmb": request.form.get('bmb'),
                 "motivo": request.form.get('motivo'),
                 "ubicacion": request.form.get('ubicacion'),
-                "f_bmb": enc(request.files.get('f1')),
-                "f_fachada": enc(request.files.get('f2'))
+                "f_bmb": to_base64(request.files.get('f1')),
+                "f_fachada": to_base64(request.files.get('f2'))
             })
             return redirect('/')
-        except: 
-            return redirect('/?error=1')
-    
+        except:
+            return "Error al guardar. Revisa la conexión."
+
     return render_template_string(f"""
     <body style="font-family:sans-serif; background:#F2F2F7; padding:20px;">
-        <div style="background:white; padding:25px; border-radius:20px; max-width:500px; margin:auto; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
-            <a href="/" style="text-decoration:none; color:#007AFF; font-weight:bold;">✕ CANCELAR</a>
-            <h2 style="margin-top:20px;">Nueva Visita</h2>
+        <div style="background:white; padding:25px; border-radius:20px; max-width:500px; margin:auto;">
+            <a href="/" style="text-decoration:none; color:#007AFF;">✕ CANCELAR</a>
+            <h2>Nueva Visita</h2>
             <form method="POST" enctype="multipart/form-data">
                 <input type="text" name="pv" placeholder="Punto de Venta" required style="width:100%; padding:14px; margin-bottom:12px; border:1px solid #ddd; border-radius:10px; box-sizing:border-box;">
                 <input type="text" name="n_documento" placeholder="Documento" required style="width:100%; padding:14px; margin-bottom:12px; border:1px solid #ddd; border-radius:10px; box-sizing:border-box;">
@@ -173,48 +170,45 @@ def formulario():
                 <select name="motivo" style="width:100%; padding:14px; margin-bottom:12px; border-radius:10px; border:1px solid #ddd;">
                     <option>Máquina Retirada</option><option>Fuera de Rango</option><option>Punto Cerrado</option>
                 </select>
-                <button type="button" onclick="geo()" id="gb" style="width:100%; padding:14px; background:#5856D6; color:white; border:none; border-radius:12px; font-weight:700;">📍 CAPTURAR GPS</button>
-                <input type="hidden" name="ubicacion" id="u">
-                <p style="margin-top:15px; font-size:12px; color:#8E8E93;">Foto BMB:</p>
-                <input type="file" name="f1" accept="image/*" capture="camera">
-                <p style="margin-top:10px; font-size:12px; color:#8E8E93;">Foto Fachada:</p>
-                <input type="file" name="f2" accept="image/*" capture="camera">
-                <button type="submit" style="width:100%; padding:18px; background:#34C759; color:white; border:none; border-radius:15px; margin-top:25px; font-weight:800; cursor:pointer;">GUARDAR REPORTE</button>
+                <button type="button" onclick="getGPS()" id="btn-gps" style="width:100%; padding:14px; background:#5856D6; color:white; border:none; border-radius:12px; font-weight:700;">📍 CAPTURAR GPS</button>
+                <input type="hidden" name="ubicacion" id="gps_input">
+                <p style="margin-top:15px; font-size:12px;">Foto BMB:</p><input type="file" name="f1" accept="image/*" capture="camera">
+                <p style="margin-top:10px; font-size:12px;">Foto Fachada:</p><input type="file" name="f2" accept="image/*" capture="camera">
+                <button type="submit" style="width:100%; padding:18px; background:#34C759; color:white; border:none; border-radius:15px; margin-top:25px; font-weight:800; width:100%;">GUARDAR REPORTE</button>
             </form>
         </div>
-        {FOOTER_HTML}
+        {FOOTER}
         <script>
-            function geo() {{
+            function getGPS() {{
                 navigator.geolocation.getCurrentPosition(p => {{
-                    document.getElementById('u').value = p.coords.latitude + "," + p.coords.longitude;
-                    document.getElementById('gb').innerText = "✅ GPS LISTO";
-                    document.getElementById('gb').style.background = "#34C759";
-                }}, e => alert("Activa el GPS por favor"));
+                    document.getElementById('gps_input').value = p.coords.latitude + "," + p.coords.longitude;
+                    document.getElementById('btn-gps').innerText = "✅ GPS LISTO";
+                    document.getElementById('btn-gps').style.background = "#34C759";
+                }}, () => alert("Error GPS. Activa los permisos."));
             }}
         </script>
     </body>
     """)
 
-# 6. Ruta de Descarga CSV
+# --- RUTA 4: DESCARGA EXCEL (CSV) ---
 @app.route('/descargar')
 def descargar():
-    cursor = coleccion.find({}, {"pv":1, "n_documento":1, "fecha":1, "mes":1, "bmb":1, "motivo":1, "ubicacion":1, "_id":0})
-    def gen():
-        d = io.StringIO()
-        w = csv.writer(d)
-        w.writerow(['Punto de Venta', 'Documento', 'Fecha', 'Mes', 'BMB', 'Motivo', 'Ubicacion'])
-        yield d.getvalue()
-        d.seek(0)
-        d.truncate(0)
+    cursor = coleccion.find({}, {"f_bmb": 0, "f_fachada": 0, "_id": 0})
+    def generate():
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['Punto de Venta', 'Documento', 'Fecha', 'Mes', 'BMB', 'Motivo', 'Ubicacion'])
+        yield output.getvalue()
+        output.seek(0)
+        output.truncate(0)
         for r in cursor:
-            bmb_val = str(r.get('bmb', '')).strip()
-            # Traducimos para el Excel
-            estado = "POSITIVO (✅)" if bmb_val == "-1" else "DÉFICIT (❌)"
-            w.writerow([r.get('pv',''), r.get('n_documento',''), r.get('fecha',''), r.get('mes',''), estado, r.get('motivo',''), r.get('ubicacion','')])
-            yield d.getvalue()
-            d.seek(0)
-            d.truncate(0)
-    return Response(gen(), mimetype='text/csv', headers={"Content-Disposition":"attachment;filename=visitas_nestle.csv"})
+            bmb_raw = str(r.get('bmb', '')).strip()
+            estado = "POSITIVO (✅)" if bmb_raw == "-1" else "DEFICIT (❌)"
+            writer.writerow([r.get('pv',''), r.get('n_documento',''), r.get('fecha',''), r.get('mes',''), estado, r.get('motivo',''), r.get('ubicacion','')])
+            yield output.getvalue()
+            output.seek(0)
+            output.truncate(0)
+    return Response(generate(), mimetype='text/csv', headers={"Content-Disposition":"attachment;filename=reporte_nestle.csv"})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
