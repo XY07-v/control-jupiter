@@ -1,33 +1,49 @@
-from flask import Flask, render_template_string, request, redirect
+from flask import Flask, render_template_string, request, redirect, Response
+import csv
+import io
 
 app = Flask(__name__)
 
-# Base de datos temporal (en memoria)
+# Base de datos temporal (Hasta que conectes el JSON de Google)
 base_datos = []
 
 @app.route('/')
 def index():
-    # Renderiza la tabla con los datos guardados
     html_tabla = """
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Plataforma Júpiter</title>
+        <title>VISITAS A POC</title>
         <style>
-            body { font-family: sans-serif; background: #f0f2f5; padding: 20px; }
-            .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 10px; shadow: 0 2px 10px rgba(0,0,0,0.1); }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            th { background-color: #2c3e50; color: white; }
-            .btn { background: #3498db; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; }
-            .chulo { color: green; font-weight: bold; }
-            .equis { color: red; font-weight: bold; }
+            body { font-family: 'Segoe UI', sans-serif; background: #f8f9fa; margin: 0; padding: 20px; }
+            .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+            .logo-nestle { width: 100px; opacity: 0.6; filter: grayscale(100%); } /* Logo sutil */
+            .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+            table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 20px; }
+            th { background: #0056a0; color: white; padding: 12px; border: 1px solid #ddd; }
+            td { padding: 10px; border: 1px solid #eee; text-align: center; }
+            .btn { padding: 10px 15px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 13px; display: inline-block; }
+            .btn-blue { background: #0056a0; color: white; }
+            .btn-green { background: #27ae60; color: white; margin-left: 10px; }
+            .chulo { color: #27ae60; font-weight: bold; }
+            .equis { color: #e74c3c; font-weight: bold; }
         </style>
     </head>
     <body>
         <div class="container">
-            <h1>🚀 Panel de Control Júpiter</h1>
-            <a href="/formulario" class="btn">+ Nuevo Registro</a>
+            <div class="header">
+                <div>
+                    <h1 style="margin:0; color: #333;">VISITAS A POC</h1>
+                    <p style="color: #666; margin: 5px 0;">Control de Gestión - Marzo 2026</p>
+                </div>
+                <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/Nestle%CC%81_textlogo.svg/2560px-Nestle%CC%81_textlogo.svg.png" class="logo-nestle" alt="Nestle">
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <a href="/formulario" class="btn btn-blue">+ Nuevo Registro</a>
+                <a href="/descargar_csv" class="btn btn-green">📥 Descargar CSV (Excel)</a>
+            </div>
+
             <table>
                 <tr>
                     <th>ID PV</th><th>Punto de Venta</th><th>N. Doc</th><th>Nombre</th>
@@ -52,67 +68,26 @@ def index():
     """
     return render_template_string(html_tabla, registros=base_datos)
 
-@app.route('/formulario', methods=['GET', 'POST'])
-def formulario():
-    if request.method == 'POST':
-        # Capturamos los datos del formulario
-        nuevo_registro = {
-            "id_pv": request.form['id_pv'],
-            "pv": request.form['pv'],
-            "doc": request.form['doc'],
-            "nombre": request.form['nombre'],
-            "mes": request.form['mes'], # Regla: Formato Texto
-            "f_visita": request.form['f_visita'],
-            "plan": request.form['plan'],
-            "fecha": request.form['fecha'],
-            "cobertura": request.form['cobertura'],
-            "estado": request.form['estado'], # -1 es Positivo, "" es Déficit
-            "motivo": request.form['motivo']
-        }
-        base_datos.append(nuevo_registro)
-        return redirect('/')
+@app.route('/descargar_csv')
+def descargar_csv():
+    # Generar CSV delimitado por ;
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=';')
+    
+    # Encabezados
+    writer.writerow(['ID Punto de Venta', 'Punto de Venta', 'N. Documento', 'Nombre completo', 'MES', 'Fecha Visita', 'Plan', 'Fecha', 'Cobertura', 'Estado', 'Motivo'])
+    
+    for r in base_datos:
+        writer.writerow([r['id_pv'], r['pv'], r['doc'], r['nombre'], r['mes'], r['f_visita'], r['plan'], r['fecha'], r['cobertura'], r['estado'], r['motivo']])
+    
+    output.seek(0)
+    return Response(
+        output,
+        mimetype="text/csv",
+        headers={"Content-disposition": "attachment; filename=Visitas_A_POC.csv"}
+    )
 
-    # Diseño del Formulario
-    html_form = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Nuevo Registro</title>
-        <style>
-            body { font-family: sans-serif; background: #f0f2f5; display: flex; justify-content: center; padding: 20px; }
-            form { background: white; padding: 20px; border-radius: 10px; width: 400px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
-            input, select, textarea { width: 100%; padding: 8px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
-            button { width: 100%; background: #27ae60; color: white; padding: 10px; border: none; border-radius: 5px; cursor: pointer; }
-        </style>
-    </head>
-    <body>
-        <form method="POST">
-            <h2>📝 Ingresar Datos</h2>
-            <input type="text" name="id_pv" placeholder="ID Punto de Venta" required>
-            <input type="text" name="pv" placeholder="Punto de Venta" required>
-            <input type="text" name="doc" placeholder="N. Documento">
-            <input type="text" name="nombre" placeholder="Nombre Completo">
-            <input type="text" name="mes" placeholder="MES (Ej: MARZO)" required>
-            <input type="date" name="f_visita" placeholder="Fecha Visita">
-            <input type="text" name="plan" placeholder="Plan">
-            <input type="date" name="fecha" placeholder="Fecha">
-            <input type="text" name="cobertura" placeholder="Cobertura">
-            
-            <label>Estado:</label>
-            <select name="estado">
-                <option value="-1">Positivo (Chulo ✅)</option>
-                <option value="0">Déficit (X ❌)</option>
-            </select>
-            
-            <textarea name="motivo" placeholder="Motivo"></textarea>
-            <button type="submit">Guardar Registro</button>
-            <br><br>
-            <a href="/">Volver al listado</a>
-        </form>
-    </body>
-    </html>
-    """
-    return render_template_string(html_form)
+# ... (Mantén aquí tu ruta de /formulario que hicimos antes) ...
 
 if __name__ == '__main__':
     app.run(debug=True)
