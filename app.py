@@ -12,38 +12,38 @@ def conectar_google():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         
-        # Cargamos el JSON y limpiamos la clave privada para evitar errores de firma (JWT)
-        with open('credenciales.json') as f:
+        # Leemos el archivo cargado
+        with open('credenciales.json.json', 'r') as f:
             info_llave = json.load(f)
         
-        # Corrección técnica para la firma digital
+        # REPARACIÓN CRÍTICA: Limpia los saltos de línea mal formateados
+        # Esto soluciona el error 'Invalid JWT Signature'
         info_llave['private_key'] = info_llave['private_key'].replace('\\n', '\n')
         
         creds = ServiceAccountCredentials.from_json_keyfile_dict(info_llave, scope)
         client = gspread.authorize(creds)
         
-        # Conexión al libro y hoja específicos
+        # Conexión al libro y hoja configurados
         libro = client.open("Visitas_POC_Nestle")
         hoja = libro.worksheet("Visitas")
         return hoja
     except Exception as e:
-        print(f"ERROR DE CONEXIÓN: {e}")
+        print(f"ERROR TÉCNICO: {e}")
         return str(e)
 
 @app.route('/')
 def index():
     hoja = conectar_google()
     
-    # Si la conexión falla, mostramos el error técnico en pantalla
     if isinstance(hoja, str):
-        return f"<h1>Error de Configuración</h1><p>Detalle: {hoja}</p><p>Revisa que el archivo se llame credenciales.json y el libro Visitas_POC_Nestle exista.</p>"
+        return f"<h1>Error de Conexión</h1><p>Detalle: {hoja}</p><p>Verifica que el robot tenga acceso a la hoja.</p>"
     
     registros = []
     try:
-        # Trae los datos usando los encabezados de la Fila 1
+        # Trae los registros basados en los encabezados de la Fila 1
         registros = hoja.get_all_records()
     except Exception as e:
-        print(f"Error al leer registros: {e}")
+        print(f"Error de lectura: {e}")
         registros = []
 
     return render_template_string("""
@@ -52,9 +52,9 @@ def index():
     <head>
         <title>VISITAS A POC</title>
         <style>
-            body { font-family: 'Segoe UI', sans-serif; background: #f8f9fa; padding: 20px; margin: 0; }
-            .container { max-width: 1100px; margin: auto; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
-            .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; padding-bottom: 15px; margin-bottom: 20px; }
+            body { font-family: 'Segoe UI', sans-serif; background: #f8f9fa; padding: 20px; }
+            .container { max-width: 1100px; margin: auto; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+            .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; margin-bottom: 20px; }
             .logo-nestle { width: 100px; opacity: 0.4; filter: grayscale(100%); }
             table { width: 100%; border-collapse: collapse; font-size: 11px; }
             th { background: #0056a0; color: white; padding: 12px; border: 1px solid #ddd; }
@@ -70,13 +70,13 @@ def index():
         <div class="container">
             <div class="header">
                 <div>
-                    <h1 style="margin:0; color:#333;">VISITAS A POC</h1>
-                    <p style="margin:5px 0; color:#666;">Control de Gestión | Nestlé</p>
+                    <h1 style="margin:0;">VISITAS A POC</h1>
+                    <p style="margin:5px 0; color:#666;">Nestlé - Control de Gestión</p>
                 </div>
                 <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/Nestle%CC%81_textlogo.svg/2560px-Nestle%CC%81_textlogo.svg.png" class="logo-nestle">
             </div>
 
-            <div style="margin-bottom: 25px;">
+            <div style="margin-bottom: 20px;">
                 <a href="/formulario" class="btn btn-blue">+ Registrar Visita</a>
                 <a href="/descargar_csv" class="btn btn-green">📥 Descargar CSV (;)</a>
             </div>
@@ -114,7 +114,6 @@ def formulario():
     if request.method == 'POST':
         hoja = conectar_google()
         if not isinstance(hoja, str):
-            # El orden de los datos debe coincidir con las columnas de la A a la K
             datos = [
                 request.form.get('id_pv'), request.form.get('pv'), 
                 request.form.get('doc'), request.form.get('nombre'),
@@ -123,64 +122,41 @@ def formulario():
                 request.form.get('cobertura'), request.form.get('estado'),
                 request.form.get('motivo')
             ]
+            # Guarda la nueva fila en Google Sheets
             hoja.append_row(datos)
         return redirect('/')
 
     return render_template_string("""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Nueva Visita</title>
-        <style>
-            body { font-family: sans-serif; background: #f0f2f5; display: flex; justify-content: center; padding: 20px; }
-            form { background: white; padding: 30px; border-radius: 12px; width: 450px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
-            h2 { text-align: center; color: #333; margin-bottom: 20px; }
-            input, select, textarea { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
-            .btn-save { background: #27ae60; color: white; border: none; padding: 14px; width: 100%; cursor: pointer; font-weight: bold; border-radius: 6px; font-size: 16px; }
-            label { font-size: 13px; color: #666; font-weight: bold; }
-        </style>
-    </head>
-    <body>
-        <form method="POST">
-            <h2>📝 Ingresar Visita</h2>
-            <input type="text" name="id_pv" placeholder="ID Punto de Venta" required>
-            <input type="text" name="pv" placeholder="Punto de Venta" required>
-            <input type="text" name="doc" placeholder="N. Documento">
-            <input type="text" name="nombre" placeholder="Nombre completo">
-            <input type="text" name="mes" placeholder="MES (Texto)" required>
-            <label>Fecha Visita:</label><input type="date" name="f_visita">
-            <input type="text" name="plan" placeholder="Plan">
-            <label>Fecha:</label><input type="date" name="fecha">
-            <input type="text" name="cobertura" placeholder="Cobertura">
-            <label>Estado del Punto:</label>
-            <select name="estado">
-                <option value="-1">Positivo (Chulo ✅)</option>
-                <option value="">Déficit (X ❌)</option>
-            </select>
-            <textarea name="motivo" placeholder="Motivo o comentario adicional"></textarea>
-            <button type="submit" class="btn-save">ENVIAR A GOOGLE SHEETS</button>
-            <p style="text-align:center;"><a href="/" style="color:#999; text-decoration:none; font-size:12px;">← Volver al listado</a></p>
-        </form>
-    </body>
-    </html>
+    <form method="POST" style="max-width:400px; margin:auto; padding:20px; font-family:sans-serif;">
+        <h2>📝 Nueva Visita</h2>
+        <input type="text" name="id_pv" placeholder="ID PV" required style="width:100%; margin:5px 0; padding:10px;">
+        <input type="text" name="pv" placeholder="Punto de Venta" required style="width:100%; margin:5px 0; padding:10px;">
+        <input type="text" name="doc" placeholder="N. Documento" style="width:100%; margin:5px 0; padding:10px;">
+        <input type="text" name="nombre" placeholder="Nombre completo" style="width:100%; margin:5px 0; padding:10px;">
+        <input type="text" name="mes" placeholder="MES (Texto)" required style="width:100%; margin:5px 0; padding:10px;">
+        <label>Fecha Visita:</label><input type="date" name="f_visita" style="width:100%; margin:5px 0; padding:10px;">
+        <input type="text" name="plan" placeholder="Plan" style="width:100%; margin:5px 0; padding:10px;">
+        <label>Fecha Actual:</label><input type="date" name="fecha" style="width:100%; margin:5px 0; padding:10px;">
+        <input type="text" name="cobertura" placeholder="Cobertura" style="width:100%; margin:5px 0; padding:10px;">
+        <select name="estado" style="width:100%; margin:5px 0; padding:10px;">
+            <option value="-1">Positivo (-1 ✅)</option>
+            <option value="">Déficit (Vacío ❌)</option>
+        </select>
+        <textarea name="motivo" placeholder="Motivo" style="width:100%; margin:5px 0; padding:10px;"></textarea>
+        <button type="submit" style="width:100%; background:#27ae60; color:white; padding:15px; border:none; cursor:pointer;">GUARDAR EN GOOGLE</button>
+    </form>
     """)
 
 @app.route('/descargar_csv')
 def descargar_csv():
     hoja = conectar_google()
-    if isinstance(hoja, str): return "Error de conexión"
-    
+    if isinstance(hoja, str): return "Error"
     valores = hoja.get_all_values()
     output = io.StringIO()
-    writer = csv.writer(output, delimiter=';') # CSV delimitado por ; solicitado
+    writer = csv.writer(output, delimiter=';')
     writer.writerows(valores)
-    
     output.seek(0)
-    return Response(
-        output,
-        mimetype="text/csv",
-        headers={"Content-disposition": "attachment; filename=Visitas_A_POC.csv"}
-    )
+    return Response(output, mimetype="text/csv", headers={"Content-disposition": "attachment; filename=Visitas_A_POC.csv"})
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
