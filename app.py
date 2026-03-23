@@ -48,7 +48,7 @@ def login():
         if user:
             session.update({'user_id': str(user['_id']), 'user_name': user.get('nombre_completo'), 'role': user.get('rol', 'asesor')})
             return redirect('/')
-    return render_template_string(f"<html><head>{CSS_BI}</head><body style='display:flex; justify-content:center; align-items:center;'><div class='card' style='max-width:350px; text-align:center;'><h2>SISTEMA BI</h2><form method='POST'><input type='text' name='usuario' placeholder='Usuario'><input type='password' name='password' placeholder='Password'><button class='btn btn-primary'>ENTRAR</button></form></div>{FOOTER_HTML}</body></html>")
+    return render_template_string(f"<html><head>{CSS_BI}</head><body style='display:flex; justify-content:center; align-items:center;'><div class='card' style='max-width:350px; text-align:center;'><h2>CMR ASISTENCIA A POC</h2><form method='POST'><input type='text' name='usuario' placeholder='Usuario'><input type='password' name='password' placeholder='Password'><button class='btn btn-primary'>ENTRAR</button></form></div>{FOOTER_HTML}</body></html>")
 
 @app.route('/')
 def index():
@@ -62,16 +62,16 @@ def index():
     <body>
         <div id="overlay" class="overlay" onclick="closeAll()"></div>
         <div id="sidebar" class="sidebar">
-            <h3 style="color:#B7E4C7; text-align:center;">Andres BI</h3>
-            <a href="/formulario" class="nav-link">📝 Nuevo Reporte</a>
-            <div class="nav-link" onclick="openModal('modal_puntos')">📍 Gestión de Puntos</div>
-            <a href="/descargar" class="nav-link">📊 Reporte Excel</a>
-            <div class="nav-link" onclick="openModal('modal_csv')">⚙️ Carga Masiva CSV</div>
-            <div class="nav-link" onclick="openModal('modal_usuarios')">👥 Usuarios</div>
-            <a href="/logout" class="nav-link" style="color:#FFB3B3; margin-top:40px;">🚪 Cerrar Sesión</a>
+            <h3 style="color:#B7E4C7; text-align:center;">Desarrollo de Andres Vanegas - Inteligencia de Negocio. Derechos Reservados.</h3>
+            <a href="/formulario" class="nav-link">Nuevo Reporte</a>
+            <div class="nav-link" onclick="openModal('modal_puntos')">Gestión de Puntos</div>
+            <a href="/descargar" class="nav-link">Reporte Excel</a>
+            <div class="nav-link" onclick="openModal('modal_csv')">Carga Masiva CSV</div>
+            <div class="nav-link" onclick="openModal('modal_usuarios')">Usuarios</div>
+            <a href="/logout" class="nav-link" style="color:#FFB3B3; margin-top:40px;">Cerrar Sesión</a>
         </div>
         <div class="main-content" style="padding:20px;">
-            <button onclick="toggleMenu()" style="background:none; border:none; color:white; font-size:24px; cursor:pointer;">☰ MENÚ</button>
+            <button onclick="toggleMenu()" style="background:none; border:none; color:white; font-size:24px; cursor:pointer;">☰ Menú</button>
             <h2 style="margin-top:20px;">Visitas Realizadas</h2>
             <div id="lista">{rows}</div>
         </div>
