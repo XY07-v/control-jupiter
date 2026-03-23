@@ -5,7 +5,7 @@ import base64, io, csv
 from datetime import datetime
 
 app = Flask(__name__)
-app.secret_key = "nestle_bi_poc_2026_v10_final"
+app.secret_key = "nestle_bi_poc_2026_v11_fixed"
 
 # --- CONEXIÓN MONGODB ---
 MONGO_URI = "mongodb+srv://control-jupiter:control-jupiter1234@cluster0.dtureen.mongodb.net/NestleDB?retryWrites=true&w=majority"
@@ -21,35 +21,38 @@ CSS_BI = """
     :root { --primary: #1B4332; --dark: #081C15; --accent: #40916C; --bg: #081C15; }
     body { font-family: 'Segoe UI', sans-serif; background: radial-gradient(circle, #1b4332 0%, #081c15 100%); margin: 0; color: white; min-height: 100vh; overflow-x: hidden; }
     
-    /* FONDO BORROSO */
     .overlay { 
         display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-        background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); 
+        background: rgba(0,0,0,0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); 
         z-index: 2000; 
     }
 
     .sidebar { position: fixed; left: -280px; top: 0; width: 280px; height: 100%; background: var(--dark); color: white; transition: 0.3s; z-index: 2100; padding: 25px; box-sizing: border-box; border-right: 1px solid var(--accent); }
     .sidebar.active { left: 0; }
     
+    .nav-link { display: block; color: #D8F3DC; text-decoration: none; padding: 15px; border-radius: 12px; margin-bottom: 8px; cursor: pointer; border: none; background: transparent; width: 100%; text-align: left; font-size: 16px; }
+    .nav-link:hover { background: var(--primary); }
+
     .modal-box { 
         display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
         width: 95%; max-width: 850px; z-index: 3000; background: #1B4332; border-radius: 24px; 
-        padding: 30px; border: 1px solid var(--accent); max-height: 90vh; overflow-y: auto; box-shadow: 0 0 50px rgba(0,0,0,0.8);
+        padding: 30px; border: 1px solid var(--accent); max-height: 90vh; overflow-y: auto; box-shadow: 0 0 50px rgba(0,0,0,0.9);
     }
 
     .card { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border-radius: 24px; padding: 25px; border: 1px solid rgba(255,255,255,0.1); width: 100%; box-sizing: border-box; }
     
-    .btn { width: 100%; padding: 12px; border-radius: 10px; font-weight: 700; cursor: pointer; border: none; transition: 0.2s; font-size: 14px; margin-top: 10px; text-align: center; display: block; box-sizing: border-box; }
+    .btn { width: 100%; padding: 12px; border-radius: 10px; font-weight: 700; cursor: pointer; border: none; transition: 0.2s; font-size: 14px; margin-top: 10px; text-align: center; display: block; box-sizing: border-box; text-decoration: none; }
     .btn-primary { background: var(--accent); color: white; }
     .btn-gray { background: #495057; color: white; }
     .btn-logout { background: #BC4749; color: white; }
 
     input, select, textarea { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid var(--accent); border-radius: 8px; background: rgba(0,0,0,0.3); color: white; box-sizing: border-box; }
-    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; color: white; }
     th, td { text-align: left; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    
     .list-item { background: rgba(255,255,255,0.05); padding: 15px; border-radius: 15px; margin-bottom: 10px; display: flex; justify-content: space-between; border-left: 5px solid var(--accent); cursor: pointer; }
     #map { height: 250px; width: 100%; border-radius: 15px; margin: 15px 0; display: none; }
-    .img-tech { width: 100%; border-radius: 12px; margin-top: 10px; display: none; }
+    .img-tech { width: 100%; border-radius: 12px; margin-top: 10px; display: none; border: 1px solid var(--accent); }
 </style>
 """
 
@@ -61,7 +64,7 @@ def login():
         if user:
             session.update({'user_id': str(user['_id']), 'user_name': user.get('nombre_completo'), 'role': user.get('rol', 'asesor')})
             return redirect('/')
-    return render_template_string(f"<html><head>{CSS_BI}</head><body style='display:flex; justify-content:center; align-items:center;'><div class='card' style='max-width:350px; text-align:center;'><h2>LOGIN BI</h2><form method='POST'><input type='text' name='usuario' placeholder='Usuario'><input type='password' name='password' placeholder='Pass'><button class='btn btn-primary'>ENTRAR</button></form></div></body></html>")
+    return render_template_string(f"<html><head>{CSS_BI}</head><body style='display:flex; justify-content:center; align-items:center;'><div class='card' style='max-width:350px; text-align:center;'><h2>SISTEMA BI</h2><form method='POST'><input type='text' name='usuario' placeholder='Usuario'><input type='password' name='password' placeholder='Password'><button class='btn btn-primary'>ENTRAR</button></form></div></body></html>")
 
 @app.route('/')
 def index():
@@ -75,7 +78,7 @@ def index():
     <body>
         <div id="overlay" class="overlay" onclick="closeAll()"></div>
         <div id="sidebar" class="sidebar">
-            <h3 style="color:#B7E4C7;">Andres BI</h3>
+            <h3 style="color:#B7E4C7; text-align:center;">Andres BI</h3>
             <a href="/formulario" class="nav-link">📝 Nuevo Reporte</a>
             <div class="nav-link" onclick="openModal('modal_puntos')">📍 Gestión de Puntos</div>
             <a href="/descargar" class="nav-link">📊 Reporte Excel</a>
@@ -92,29 +95,33 @@ def index():
         <div id="modal_detalle" class="modal-box"><div id="det_body"></div><button onclick="closeAll()" class="btn btn-gray">REGRESAR (ESC)</button></div>
         
         <div id="modal_puntos" class="modal-box">
-            <h3>Gestión de Puntos</h3>
-            <input type="text" id="f_pv" placeholder="Buscar Punto..." onkeyup="filtrarPuntos()">
+            <h3>📍 Gestión de Puntos</h3>
+            <input type="text" id="f_pv" placeholder="Filtrar por nombre..." onkeyup="filtrarPuntos()">
             <div style="overflow-x:auto;"><table><thead><tr><th>Punto</th><th>BMB</th><th>Acción</th></tr></thead><tbody id="puntos_table"></tbody></table></div>
             <div id="edit_punto_form" style="display:none; margin-top:20px; border-top:1px solid var(--accent); padding-top:10px;">
-                <input type="hidden" id="ep_id"><input type="text" id="ep_nombre"><input type="text" id="ep_bmb">
-                <button class="btn btn-primary" onclick="actualizarPunto()">Guardar</button>
+                <input type="hidden" id="ep_id">
+                <label>Nombre</label><input type="text" id="ep_nombre">
+                <label>BMB</label><input type="text" id="ep_bmb">
+                <button class="btn btn-primary" onclick="actualizarPunto()">Guardar Cambios</button>
             </div>
             <button onclick="closeAll()" class="btn btn-gray">REGRESAR (ESC)</button>
         </div>
 
         <div id="modal_csv" class="modal-box">
-            <h3>Carga Masiva</h3><input type="file" id="fileCsv" accept=".csv"><button onclick="subirCsv()" class="btn btn-primary">Subir</button>
+            <h3>⚙️ Carga Masiva</h3>
+            <input type="file" id="fileCsv" accept=".csv">
+            <button onclick="subirCsv()" class="btn btn-primary">Procesar Archivo</button>
             <button onclick="closeAll()" class="btn btn-gray">REGRESAR (ESC)</button>
         </div>
 
         <div id="modal_usuarios" class="modal-box">
-            <h3>Usuarios</h3><tbody id="user_table"></tbody>
+            <h3>👥 Gestión de Usuarios</h3>
+            <table><thead><tr><th>Nombre</th><th>Rol</th><th>Acción</th></tr></thead><tbody id="user_table"></tbody></table>
             <button onclick="closeAll()" class="btn btn-gray">REGRESAR (ESC)</button>
         </div>
 
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
         <script>
-            // FUNCIÓN ESCAPE PARA CERRAR TODO
             document.addEventListener('keydown', (e) => {{ if(e.key === "Escape") closeAll(); }});
 
             function toggleMenu() {{ 
@@ -141,7 +148,7 @@ def index():
                 window.allPuntos = puntos; renderPuntos(puntos);
             }}
             function renderPuntos(lista) {{
-                document.getElementById('puntos_table').innerHTML = lista.map(p => `<tr><td>${{p['Punto de Venta']}}</td><td>${{p['BMB']}}</td><td><button onclick='editarPunto(${{JSON.stringify(p)}})' style='color:#B7E4C7; background:none; border:none;'>Editar</button></td></tr>`).join('');
+                document.getElementById('puntos_table').innerHTML = lista.map(p => `<tr><td>${{p['Punto de Venta']}}</td><td>${{p['BMB']}}</td><td><button onclick='editarPunto(${{JSON.stringify(p)}})' style='color:#B7E4C7; background:none; border:none; cursor:pointer;'>Editar</button></td></tr>`).join('');
             }}
             function filtrarPuntos() {{
                 const f = document.getElementById('f_pv').value.toLowerCase();
@@ -153,7 +160,12 @@ def index():
             }}
             async function actualizarPunto() {{
                 await fetch('/api/actualizar_punto', {{ method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{id:document.getElementById('ep_id').value, nom:document.getElementById('ep_nombre').value, bmb:document.getElementById('ep_bmb').value}}) }});
-                alert("Actualizado"); cargarPuntos();
+                alert("✅ Punto Actualizado"); cargarPuntos();
+            }}
+
+            async function cargarUsuarios() {{
+                const res = await fetch('/api/usuarios'); const users = await res.json();
+                document.getElementById('user_table').innerHTML = users.map(u => `<tr><td>${{u.nombre_completo}}</td><td>${{u.rol}}</td><td>---</td></tr>`).join('');
             }}
 
             function verDetalle(id, pv, f, doc, mot, gps, bmb, nota) {{ 
@@ -166,6 +178,12 @@ def index():
                 if(d.f2) {{ document.getElementById('im2').src=d.f2; document.getElementById('im2').style.display='block'; }} 
                 if(gps) {{ document.getElementById('map').style.display='block'; const map = L.map('map').setView(gps.split(','), 16); L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png').addTo(map); L.marker(gps.split(',')).addTo(map); }} 
                 document.getElementById('ld_b').style.display='none'; 
+            }}
+            async function subirCsv() {{
+                const formData = new FormData(); formData.append('file_csv', document.getElementById('fileCsv').files[0]);
+                const res = await fetch('/carga_masiva_puntos', {{ method: 'POST', body: formData }});
+                const data = await res.json();
+                if(res.ok) alert("✅ Cargado: " + data.count + " registros");
             }}
         </script>
     </body></html>
@@ -197,18 +215,18 @@ def formulario():
             <button onclick="location.href='/formulario'" class="btn btn-primary">Aceptar</button>
         </div>
         <div class="card" style="max-width:480px;">
-            <h2 style="text-align:center; color:#B7E4C7; margin:0 0 20px 0;">NUEVA VISITA</h2>
+            <h2 style="text-align:center; color:#B7E4C7; margin-top:0;">REPORTE DE VISITA</h2>
             <form method="POST" enctype="multipart/form-data">
                 <label>Punto</label><input list="p" name="pv" id="pv_i" onchange="upBMB()" required><datalist id="p">{options}</datalist>
                 <label>BMB</label><input type="text" name="bmb" id="bmb_i" readonly style="opacity:0.6;">
                 <label>Fecha</label><input type="date" name="fecha" value="{datetime.now().strftime('%Y-%m-%d')}">
                 <label>Motivo</label><select name="motivo"><option>Máquina Retirada</option><option>Punto Cerrado</option><option>Dificultades Trade</option><option>Fuera de rango</option></select>
                 <label>Nota</label><textarea name="nota" rows="2"></textarea>
-                <label>Evidencia 1</label><input type="file" name="f1" accept="image/*" capture="camera" required>
-                <label>Evidencia 2</label><input type="file" name="f2" accept="image/*" capture="camera" required>
+                <label>Foto Evidencia 1</label><input type="file" name="f1" accept="image/*" capture="camera" required>
+                <label>Foto Evidencia 2</label><input type="file" name="f2" accept="image/*" capture="camera" required>
                 <input type="hidden" name="ubicacion" id="g">
                 <button class="btn btn-primary">GUARDAR REGISTRO</button>
-                {f'<a href="/" class="btn btn-gray">VOLVER AL PANEL</a>' if session['role']=='admin' else ''}
+                {f'<a href="/" class="btn btn-gray">VOLVER PANEL</a>' if session['role']=='admin' else ''}
                 <a href="/logout" class="btn btn-logout">CERRAR SESIÓN</a>
             </form>
         </div>
@@ -233,6 +251,23 @@ def update_p():
     data = request.json
     puntos_col.update_one({"_id": ObjectId(data['id'])}, {"$set": {"Punto de Venta": data['nom'], "BMB": data['bmb']}})
     return jsonify({"status": "ok"})
+
+@app.route('/api/usuarios')
+def api_users():
+    users = list(usuarios_col.find()); [u.update({"_id": str(u["_id"])}) for u in users]
+    return jsonify(users)
+
+@app.route('/carga_masiva_puntos', methods=['POST'])
+def carga():
+    f = request.files.get('file_csv')
+    if f:
+        content = f.stream.read().decode("utf-8-sig", errors="ignore")
+        d = ';' if content.count(';') > content.count(',') else ','
+        reader = csv.DictReader(io.StringIO(content), delimiter=d)
+        lista = [{k.strip(): v.strip() for k, v in r.items() if k} for r in reader]
+        puntos_col.delete_many({}); puntos_col.insert_many(lista)
+        return jsonify({"count": len(lista)})
+    return jsonify({"error": "No file"}), 400
 
 @app.route('/descargar')
 def desc():
