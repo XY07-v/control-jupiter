@@ -5,7 +5,7 @@ import base64, io, csv
 from datetime import datetime
 
 app = Flask(__name__)
-app.secret_key = "nestle_bi_sidebar_2026"
+app.secret_key = "nestle_bi_ultimate_2026"
 
 # --- CONEXIÓN MONGODB ---
 MONGO_URI = "mongodb+srv://control-jupiter:control-jupiter1234@cluster0.dtureen.mongodb.net/NestleDB?retryWrites=true&w=majority"
@@ -15,50 +15,45 @@ visitas_col = db['visitas']
 usuarios_col = db['usuarios']
 puntos_col = db['puntos_venta']
 
-# --- CSS CON SIDEBAR DINÁMICO ---
+# --- CSS MEJORADO (DISEÑO CENTRADO Y BLUR) ---
 CSS_BI = """
 <style>
     :root { --primary: #005596; --dark: #002C5F; --bg: #F1F5F9; --sidebar-w: 280px; }
-    body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; display: flex; overflow-x: hidden; }
+    body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; display: flex; }
     
-    /* Sidebar Estilo */
     .sidebar { 
-        position: fixed; left: calc(-1 * var(--sidebar-w)); top: 0; width: var(--sidebar-w); height: 100%; 
-        background: var(--dark); color: white; transition: 0.3s ease; z-index: 2000; padding: 25px; box-sizing: border-box;
-        box-shadow: 10px 0 30px rgba(0,0,0,0.2);
+        position: fixed; left: -280px; top: 0; width: var(--sidebar-w); height: 100%; 
+        background: var(--dark); color: white; transition: 0.3s; z-index: 2100; padding: 25px; box-sizing: border-box;
     }
     .sidebar.active { left: 0; }
-    .sidebar h2 { color: #60A5FA; font-size: 22px; margin-bottom: 30px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; }
-    .nav-link { 
-        display: block; color: #E2E8F0; text-decoration: none; padding: 15px; border-radius: 12px; 
-        margin-bottom: 8px; font-weight: 600; transition: 0.2s; cursor: pointer; border: none; background: transparent; width: 100%; text-align: left; font-size: 16px;
-    }
-    .nav-link:hover { background: rgba(255,255,255,0.1); color: white; transform: translateX(5px); }
-    .nav-link.logout { color: #F87171; margin-top: 40px; }
+    .nav-link { display: block; color: #E2E8F0; text-decoration: none; padding: 15px; border-radius: 12px; margin-bottom: 8px; cursor: pointer; border: none; background: transparent; width: 100%; text-align: left; font-size: 16px; }
+    .nav-link:hover { background: rgba(255,255,255,0.1); color: white; }
 
-    /* Contenido Principal */
-    .main-content { width: 100%; padding: 20px; transition: 0.3s; margin-left: 0; }
+    .main-content { width: 100%; padding: 20px; transition: 0.3s; }
     .header-bar { display: flex; align-items: center; gap: 20px; margin-bottom: 25px; }
-    .menu-toggle { background: var(--primary); color: white; border: none; padding: 10px 15px; border-radius: 10px; cursor: pointer; font-size: 20px; }
+    .menu-toggle { background: var(--primary); color: white; border: none; padding: 12px 18px; border-radius: 10px; cursor: pointer; font-size: 20px; }
 
     .card { background: white; border-radius: 20px; padding: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 20px; }
-    .btn { padding: 12px 20px; border-radius: 12px; font-weight: 700; cursor: pointer; border: none; transition: 0.3s; text-decoration: none; display: inline-block; text-align: center; }
+    .btn { padding: 12px 20px; border-radius: 12px; font-weight: 700; cursor: pointer; border: none; transition: 0.2s; text-decoration: none; display: inline-block; text-align: center; }
     .btn-primary { background: var(--primary); color: white; width: 100%; }
-    
-    .list-item { background: white; padding: 20px; border-radius: 16px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; border-left: 6px solid var(--primary); box-shadow: 0 2px 8px rgba(0,0,0,0.02); }
-    
-    /* Modales y Overlays */
+    .btn-gray { background: #64748B; color: white; width: 100%; margin-top: 10px; }
+
+    /* Overlay para desenfoque de fondo */
     .overlay { 
         display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-        background: rgba(0,0,0,0.4); backdrop-filter: blur(8px); z-index: 1500; 
+        background: rgba(0,0,0,0.3); backdrop-filter: blur(10px); z-index: 2000; 
     }
-    #modal_detalle, #modal_admin { 
+
+    /* Modales Centrados */
+    .modal-box { 
         display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
-        width: 90%; max-width: 800px; z-index: 3000; 
+        width: 90%; max-width: 600px; z-index: 2500; background: white; border-radius: 24px; padding: 35px; 
+        max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 40px rgba(0,0,0,0.2);
     }
-    .modal-content { background: white; border-radius: 24px; padding: 30px; max-height: 85vh; overflow-y: auto; }
     
-    input, select { width: 100%; padding: 14px; margin: 10px 0; border: 1.5px solid #E2E8F0; border-radius: 12px; font-size: 16px; }
+    input, select { width: 100%; padding: 14px; margin: 10px 0; border: 1.5px solid #E2E8F0; border-radius: 12px; font-size: 16px; box-sizing: border-box; }
+    .list-item { background: white; padding: 20px; border-radius: 16px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; border-left: 6px solid var(--primary); }
+    
     #map { height: 300px; width: 100%; border-radius: 18px; margin: 15px 0; display: none; }
     .img-tech { width: 100%; border-radius: 15px; margin-top: 15px; display: none; }
 </style>
@@ -72,7 +67,7 @@ def login():
         if user:
             session.update({'user_id': str(user['_id']), 'user_name': user.get('nombre_completo'), 'role': user.get('rol', 'asesor')})
             return redirect('/')
-    return render_template_string(f"<html><head>{CSS_BI}</head><body style='justify-content:center; align-items:center; background:var(--dark);'><div class='card' style='width:320px; margin:auto; margin-top:15vh; text-align:center;'><h2>BI Login</h2><form method='POST'><input type='text' name='usuario' placeholder='Usuario'><input type='password' name='password' placeholder='Pass'><button class='btn btn-primary'>Entrar</button></form></div></body></html>")
+    return render_template_string(f"<html><head>{CSS_BI}</head><body style='justify-content:center; align-items:center; background:var(--dark); display:flex; height:100vh;'><div class='card' style='width:340px; text-align:center;'><h2>BI System</h2><form method='POST'><input type='text' name='usuario' placeholder='Usuario'><input type='password' name='password' placeholder='Password'><button class='btn btn-primary'>Entrar</button></form></div></body></html>")
 
 @app.route('/')
 def index():
@@ -86,95 +81,105 @@ def index():
     <html>
     <head><meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />{CSS_BI}</head>
     <body>
-        <div id="sidebar_overlay" class="overlay" onclick="toggleMenu()"></div>
+        <div id="overlay" class="overlay" onclick="closeAll()"></div>
         
         <div id="sidebar" class="sidebar">
-            <h2>Menú Control</h2>
-            <a href="/formulario" class="nav-link">📝 Nuevo Registro</a>
-            <a href="/descargar" class="nav-link">📊 Reporte de Visitas</a>
-            <div class="nav-link" onclick="openAdmin()">⚙️ Carga Masiva PDV</div>
-            <div class="nav-link" onclick="openAdmin()">👥 Crear Usuario</div>
-            <a href="/logout" class="nav-link logout">🚪 Cerrar Sesión</a>
-            <div style="position:absolute; bottom:20px; font-size:10px; opacity:0.5;">BI System v2.0 - Andres</div>
+            <h2>Panel Andres</h2>
+            <a href="/formulario" class="nav-link">📝 Nuevo Reporte</a>
+            <a href="/descargar" class="nav-link">📊 Descargar Excel</a>
+            <div class="nav-link" onclick="openModal('modal_csv')">⚙️ Carga Puntos PDV</div>
+            <div class="nav-link" onclick="openModal('modal_user')">👤 Crear Usuario</div>
+            <a href="/logout" class="nav-link" style="color:#F87171; margin-top:50px;">🚪 Cerrar Sesión</a>
         </div>
 
         <div class="main-content">
             <div class="header-bar">
-                <button class="menu-toggle" onclick="toggleMenu()">☰</button>
-                <h2 style="margin:0; color:var(--dark);">Registros de Visitas</h2>
+                <button class="menu-toggle" onclick="toggleMenu()">☰ Menu</button>
+                <h2 style="margin:0;">Registros Recientes</h2>
             </div>
-            
             <div id="lista">{rows}</div>
         </div>
 
-        <div id="modal_detalle" class="modal-content" style="display:none; position:fixed;">
+        <div id="modal_detalle" class="modal-box">
             <div id="det_body"></div>
-            <button onclick="closeModal('modal_detalle')" class="btn btn-primary" style="background:gray; margin-top:15px;">Cerrar</button>
+            <button onclick="closeModal('modal_detalle')" class="btn btn-gray">Regresar</button>
         </div>
 
-        <div id="modal_admin" class="modal-content" style="display:none; position:fixed;">
-            <h3>Herramientas Administrativas</h3>
-            <hr>
-            <h4>1. Puntos de Venta</h4>
-            <a href="/descargar_plantilla" style="font-size:12px; color:var(--primary);">Descargar Plantilla CSV</a>
+        <div id="modal_csv" class="modal-box">
+            <h3>Carga Masiva de Puntos</h3>
+            <a href="/descargar_plantilla" style="color:var(--primary); font-size:13px;">Descargar Formato CSV</a>
             <form action="/carga_masiva_puntos" method="POST" enctype="multipart/form-data">
                 <input type="file" name="file_csv" accept=".csv" required>
-                <button class="btn btn-primary" style="background:#10B981;">Actualizar Base PDV</button>
+                <button class="btn btn-primary">Actualizar Base</button>
             </form>
-            <br>
-            <h4>2. Registro de Usuarios</h4>
+            <button onclick="closeModal('modal_csv')" class="btn btn-gray">Cancelar / Regresar</button>
+        </div>
+
+        <div id="modal_user" class="modal-box">
+            <h3>Registrar Nuevo Usuario</h3>
             <form action="/crear_usuario" method="POST">
                 <input type="text" name="nombre" placeholder="Nombre Completo" required>
-                <input type="text" name="user" placeholder="Usuario Login" required>
+                <input type="text" name="user" placeholder="ID de Usuario" required>
                 <input type="password" name="pass" placeholder="Password" required>
                 <select name="rol"><option value="asesor">Asesor</option><option value="admin">Administrador</option></select>
                 <button class="btn btn-primary">Guardar Usuario</button>
             </form>
-            <button onclick="closeModal('modal_admin')" class="btn btn-primary" style="background:gray; margin-top:20px;">Cerrar</button>
+            <button onclick="closeModal('modal_user')" class="btn btn-gray">Regresar</button>
         </div>
 
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
         <script>
-            function toggleMenu() {{
-                document.getElementById('sidebar').classList.toggle('active');
-                const overlay = document.getElementById('sidebar_overlay');
-                overlay.style.display = overlay.style.display === 'block' ? 'none' : 'block';
+            function toggleMenu() {{ 
+                document.getElementById('sidebar').classList.toggle('active'); 
+                document.getElementById('overlay').style.display = document.getElementById('sidebar').classList.contains('active') ? 'block' : 'none';
             }}
-            function openAdmin() {{ toggleMenu(); document.getElementById('modal_admin').style.display='block'; }}
-            function closeModal(id) {{ document.getElementById(id).style.display='none'; }}
+            function openModal(id) {{ 
+                closeAll();
+                document.getElementById('overlay').style.display = 'block';
+                document.getElementById(id).style.display = 'block';
+            }}
+            function closeModal(id) {{ 
+                document.getElementById(id).style.display = 'none';
+                if (!document.getElementById('sidebar').classList.contains('active')) document.getElementById('overlay').style.display = 'none';
+            }}
+            function closeAll() {{
+                document.querySelectorAll('.modal-box').forEach(m => m.style.display = 'none');
+                document.getElementById('sidebar').classList.remove('active');
+                document.getElementById('overlay').style.display = 'none';
+            }}
+
+            // ESC para cerrar ventanas
+            window.addEventListener('keydown', e => {{ if(e.key === 'Escape') closeAll(); }});
 
             function verDetalle(id, pv, f, doc, mot, gps, bmb) {{
                 document.getElementById('det_body').innerHTML = `
                     <h3>${{pv}}</h3>
                     <p><b>Fecha:</b> ${{f}} | <b>BMB:</b> ${{bmb}}</p>
                     <p><b>Asesor:</b> ${{doc}}<br><b>Motivo:</b> ${{mot}}</p>
-                    <button id="btn_m" class="btn btn-primary" onclick="loadM('${{id}}','${{gps}}')">Ver Fotos y Mapa</button>
+                    <button id="ld_b" class="btn btn-primary" onclick="loadM('${{id}}','${{gps}}')">Consultar Evidencia</button>
                     <div id="map"></div>
-                    <img id="m1" class="img-tech"><img id="m2" class="img-tech">`;
-                document.getElementById('modal_detalle').style.display='block';
+                    <img id="im1" class="img-tech"><img id="im2" class="img-tech">`;
+                openModal('modal_detalle');
             }}
 
             async function loadM(id, gps) {{
-                document.getElementById('btn_m').innerText = "Cargando...";
                 const res = await fetch('/get_img/'+id);
                 const d = await res.json();
-                if(d.f1) {{ document.getElementById('m1').src=d.f1; document.getElementById('m1').style.display='block'; }}
-                if(d.f2) {{ document.getElementById('m2').src=d.f2; document.getElementById('m2').style.display='block'; }}
+                if(d.f1) {{ document.getElementById('im1').src=d.f1; document.getElementById('im1').style.display='block'; }}
+                if(d.f2) {{ document.getElementById('im2').src=d.f2; document.getElementById('im2').style.display='block'; }}
                 if(gps) {{
                     document.getElementById('map').style.display='block';
-                    const l = gps.split(',').map(Number);
-                    const map = L.map('map').setView(l, 16);
+                    const map = L.map('map').setView(gps.split(','), 16);
                     L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png').addTo(map);
-                    L.marker(l).addTo(map);
+                    L.marker(gps.split(',')).addTo(map);
                 }}
-                document.getElementById('btn_m').style.display='none';
+                document.getElementById('ld_b').style.display='none';
             }}
         </script>
     </body>
     </html>
     """)
 
-# --- LAS DEMÁS RUTAS (FORMULARIO, CARGA, ETC.) SE MANTIENEN IGUAL QUE ANTES ---
 @app.route('/formulario', methods=['GET', 'POST'])
 def formulario():
     if 'user_id' not in session: return redirect('/login')
@@ -196,8 +201,37 @@ def formulario():
     puntos = puntos_col.find({}, {"Punto de Venta": 1})
     options = "".join([f'<option value="{p["Punto de Venta"]}">' for p in puntos])
     today = datetime.now().strftime('%Y-%m-%d')
-    return render_template_string(f"<html><head><meta name='viewport' content='width=device-width, initial-scale=1.0'>{CSS_BI}</head><body onload='getGPS()'><div class='container' style='max-width:500px;'><div class='card'><h3>Nuevo Registro</h3><form method='POST' enctype='multipart/form-data'><input list='p' name='pv' placeholder='Punto de Venta' required><datalist id='p'>{options}</datalist><input type='text' value='{session['user_name']}' readonly><input type='date' name='fecha' value='{today}'><input type='text' name='bmb' placeholder='BMB' required><select name='motivo'><option>Máquina Retirada</option><option>Punto Cerrado</option></select><input type='hidden' name='ubicacion' id='g'><div id='gs'>📍 Ubicando...</div><br><label>Foto BMB</label><input type='file' name='f1' accept='image/*' capture='camera' required><label>Foto Fachada</label><input type='file' name='f2' accept='image/*' capture='camera' required><button class='btn btn-primary'>Enviar</button></form></div><a href='/logout' style='color:red;'>Salir</a></div><script>function getGPS(){{navigator.geolocation.getCurrentPosition(p=>{{document.getElementById('g').value=p.coords.latitude+','+p.coords.longitude; document.getElementById('gs').innerText='✅ GPS OK';}},()=>{{alert('Activa GPS');}},{{enableHighAccuracy:true}});}}</script></body></html>")
+    return render_template_string(f"""
+    <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">{CSS_BI}</head>
+    <body onload="getGPS()" style="justify-content:center; align-items:center; display:flex;">
+        <div class="container" style="max-width:550px; width:100%;">
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    {f'<a href="/" style="text-decoration:none; color:var(--primary); font-weight:700;">← Regresar</a>' if session['role']=='admin' else '<span></span>'}
+                    <h3 style="margin:0;">Registro Visita</h3>
+                    <a href="/logout" style="color:red; text-decoration:none;">Salir</a>
+                </div>
+                <hr style="opacity:0.1; margin:15px 0;">
+                <form method="POST" enctype="multipart/form-data">
+                    <input list="p" name="pv" placeholder="Punto de Venta" required><datalist id="p">{options}</datalist>
+                    <input type="text" value="{session['user_name']}" readonly>
+                    <input type="date" name="fecha" value="{today}">
+                    <input type="text" name="bmb" placeholder="Dato BMB (-1 o vacío)" required>
+                    <select name="motivo"><option>Máquina Retirada</option><option>Punto Cerrado</option></select>
+                    <input type="hidden" name="ubicacion" id="g">
+                    <div id="gs" style="font-size:11px; color:green;">📍 Localizando...</div>
+                    <br><label style="font-size:12px;">Foto BMB</label><input type="file" name="f1" accept="image/*" capture="camera" required>
+                    <label style="font-size:12px;">Foto Fachada</label><input type="file" name="f2" accept="image/*" capture="camera" required>
+                    <button class="btn btn-primary">Finalizar y Enviar</button>
+                    {f'<a href="/" class="btn btn-gray" style="display:block;">Cancelar y Volver</a>' if session['role']=='admin' else ''}
+                </form>
+            </div>
+        </div>
+        <script>function getGPS(){{navigator.geolocation.getCurrentPosition(p=>{{document.getElementById('g').value=p.coords.latitude+','+p.coords.longitude; document.getElementById('gs').innerText='✅ GPS Listo';}},null,{{enableHighAccuracy:true}});}}</script>
+    </body></html>
+    """)
 
+# (Rutas de carga_masiva, crear_usuario, etc. se mantienen igual)
 @app.route('/carga_masiva_puntos', methods=['POST'])
 def carga():
     file = request.files.get('file_csv')
