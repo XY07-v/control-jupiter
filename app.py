@@ -5,7 +5,7 @@ import base64, io, csv
 from datetime import datetime
 
 app = Flask(__name__)
-app.secret_key = "nestle_bi_poc_2026_v11_fixed"
+app.secret_key = "nestle_bi_poc_2026_v12_puntos_pop"
 
 # --- CONEXIÓN MONGODB ---
 MONGO_URI = "mongodb+srv://control-jupiter:control-jupiter1234@cluster0.dtureen.mongodb.net/NestleDB?retryWrites=true&w=majority"
@@ -15,7 +15,7 @@ visitas_col = db['visitas']
 usuarios_col = db['usuarios']
 puntos_col = db['puntos_venta']
 
-# --- CSS CON FONDO BORROSO Y FOCO ---
+# --- CSS PROFESIONAL ---
 CSS_BI = """
 <style>
     :root { --primary: #1B4332; --dark: #081C15; --accent: #40916C; --bg: #081C15; }
@@ -38,6 +38,9 @@ CSS_BI = """
         width: 95%; max-width: 850px; z-index: 3000; background: #1B4332; border-radius: 24px; 
         padding: 30px; border: 1px solid var(--accent); max-height: 90vh; overflow-y: auto; box-shadow: 0 0 50px rgba(0,0,0,0.9);
     }
+    
+    /* MODAL PEQUEÑO PARA EDICIÓN */
+    .modal-mini { max-width: 400px; z-index: 4000; }
 
     .card { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border-radius: 24px; padding: 25px; border: 1px solid rgba(255,255,255,0.1); width: 100%; box-sizing: border-box; }
     
@@ -98,25 +101,27 @@ def index():
             <h3>📍 Gestión de Puntos</h3>
             <input type="text" id="f_pv" placeholder="Filtrar por nombre..." onkeyup="filtrarPuntos()">
             <div style="overflow-x:auto;"><table><thead><tr><th>Punto</th><th>BMB</th><th>Acción</th></tr></thead><tbody id="puntos_table"></tbody></table></div>
-            <div id="edit_punto_form" style="display:none; margin-top:20px; border-top:1px solid var(--accent); padding-top:10px;">
-                <input type="hidden" id="ep_id">
-                <label>Nombre</label><input type="text" id="ep_nombre">
-                <label>BMB</label><input type="text" id="ep_bmb">
-                <button class="btn btn-primary" onclick="actualizarPunto()">Guardar Cambios</button>
-            </div>
             <button onclick="closeAll()" class="btn btn-gray">REGRESAR (ESC)</button>
+        </div>
+
+        <div id="modal_edit_punto" class="modal-box modal-mini">
+            <h3>Editar Punto de Venta</h3>
+            <input type="hidden" id="ep_id">
+            <label>Nombre del Punto</label><input type="text" id="ep_nombre">
+            <label>BMB</label><input type="text" id="ep_bmb">
+            <button class="btn btn-primary" onclick="actualizarPunto()">Guardar Cambios</button>
+            <button onclick="document.getElementById('modal_edit_punto').style.display='none'" class="btn btn-gray">Cancelar</button>
         </div>
 
         <div id="modal_csv" class="modal-box">
             <h3>⚙️ Carga Masiva</h3>
-            <input type="file" id="fileCsv" accept=".csv">
-            <button onclick="subirCsv()" class="btn btn-primary">Procesar Archivo</button>
+            <input type="file" id="fileCsv" accept=".csv"><button onclick="subirCsv()" class="btn btn-primary">Procesar</button>
             <button onclick="closeAll()" class="btn btn-gray">REGRESAR (ESC)</button>
         </div>
 
         <div id="modal_usuarios" class="modal-box">
-            <h3>👥 Gestión de Usuarios</h3>
-            <table><thead><tr><th>Nombre</th><th>Rol</th><th>Acción</th></tr></thead><tbody id="user_table"></tbody></table>
+            <h3>👥 Lista de Usuarios</h3>
+            <table><thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th></tr></thead><tbody id="user_table"></tbody></table>
             <button onclick="closeAll()" class="btn btn-gray">REGRESAR (ESC)</button>
         </div>
 
@@ -148,24 +153,30 @@ def index():
                 window.allPuntos = puntos; renderPuntos(puntos);
             }}
             function renderPuntos(lista) {{
-                document.getElementById('puntos_table').innerHTML = lista.map(p => `<tr><td>${{p['Punto de Venta']}}</td><td>${{p['BMB']}}</td><td><button onclick='editarPunto(${{JSON.stringify(p)}})' style='color:#B7E4C7; background:none; border:none; cursor:pointer;'>Editar</button></td></tr>`).join('');
+                document.getElementById('puntos_table').innerHTML = lista.map(p => `<tr><td>${{p['Punto de Venta']}}</td><td>${{p['BMB']}}</td><td><button onclick='abrirPopupEdicion(${{JSON.stringify(p)}})' style='color:#B7E4C7; background:none; border:none; cursor:pointer; font-weight:bold;'>EDITAR</button></td></tr>`).join('');
             }}
             function filtrarPuntos() {{
                 const f = document.getElementById('f_pv').value.toLowerCase();
                 renderPuntos(window.allPuntos.filter(p => p['Punto de Venta'].toLowerCase().includes(f)));
             }}
-            function editarPunto(p) {{
-                document.getElementById('edit_punto_form').style.display='block';
-                document.getElementById('ep_id').value=p._id; document.getElementById('ep_nombre').value=p['Punto de Venta']; document.getElementById('ep_bmb').value=p['BMB'];
+
+            function abrirPopupEdicion(p) {{
+                document.getElementById('ep_id').value = p._id;
+                document.getElementById('ep_nombre').value = p['Punto de Venta'];
+                document.getElementById('ep_bmb').value = p['BMB'];
+                document.getElementById('modal_edit_punto').style.display = 'block';
             }}
+
             async function actualizarPunto() {{
                 await fetch('/api/actualizar_punto', {{ method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{id:document.getElementById('ep_id').value, nom:document.getElementById('ep_nombre').value, bmb:document.getElementById('ep_bmb').value}}) }});
-                alert("✅ Punto Actualizado"); cargarPuntos();
+                alert("✅ Registro Actualizado");
+                document.getElementById('modal_edit_punto').style.display = 'none';
+                cargarPuntos();
             }}
 
             async function cargarUsuarios() {{
                 const res = await fetch('/api/usuarios'); const users = await res.json();
-                document.getElementById('user_table').innerHTML = users.map(u => `<tr><td>${{u.nombre_completo}}</td><td>${{u.rol}}</td><td>---</td></tr>`).join('');
+                document.getElementById('user_table').innerHTML = users.map(u => `<tr><td>${{u.nombre_completo}}</td><td>${{u.usuario}}</td><td>${{u.rol}}</td></tr>`).join('');
             }}
 
             function verDetalle(id, pv, f, doc, mot, gps, bmb, nota) {{ 
@@ -210,7 +221,7 @@ def formulario():
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">{CSS_BI}</head>
     <body onload="getGPS()" style="display:flex; justify-content:center; align-items:center; padding:20px;">
         <div id="over" class="overlay" style="display:{'block' if msg_ok else 'none'};" onclick="location.href='/formulario'"></div>
-        <div class="modal-box" style="display:{'block' if msg_ok else 'none'}; text-align:center; max-width:350px;">
+        <div class="modal-box" style="display:{'block' if msg_ok else 'none'}; text-align:center; max-width:350px; z-index:5000;">
             <h1 style="font-size:60px; margin:0;">✅</h1><h2>¡Éxito!</h2>
             <button onclick="location.href='/formulario'" class="btn btn-primary">Aceptar</button>
         </div>
@@ -218,7 +229,7 @@ def formulario():
             <h2 style="text-align:center; color:#B7E4C7; margin-top:0;">REPORTE DE VISITA</h2>
             <form method="POST" enctype="multipart/form-data">
                 <label>Punto</label><input list="p" name="pv" id="pv_i" onchange="upBMB()" required><datalist id="p">{options}</datalist>
-                <label>BMB</label><input type="text" name="bmb" id="bmb_i" readonly style="opacity:0.6;">
+                <label>BMB (Auto)</label><input type="text" name="bmb" id="bmb_i" readonly style="opacity:0.6;">
                 <label>Fecha</label><input type="date" name="fecha" value="{datetime.now().strftime('%Y-%m-%d')}">
                 <label>Motivo</label><select name="motivo"><option>Máquina Retirada</option><option>Punto Cerrado</option><option>Dificultades Trade</option><option>Fuera de rango</option></select>
                 <label>Nota</label><textarea name="nota" rows="2"></textarea>
@@ -226,7 +237,7 @@ def formulario():
                 <label>Foto Evidencia 2</label><input type="file" name="f2" accept="image/*" capture="camera" required>
                 <input type="hidden" name="ubicacion" id="g">
                 <button class="btn btn-primary">GUARDAR REGISTRO</button>
-                {f'<a href="/" class="btn btn-gray">VOLVER PANEL</a>' if session['role']=='admin' else ''}
+                {f'<a href="/" class="btn btn-gray">VOLVER AL PANEL</a>' if session['role']=='admin' else ''}
                 <a href="/logout" class="btn btn-logout">CERRAR SESIÓN</a>
             </form>
         </div>
