@@ -5,7 +5,7 @@ import base64, io, csv
 from datetime import datetime
 
 app = Flask(__name__)
-app.secret_key = "nestle_bi_poc_2026"
+app.secret_key = "nestle_bi_poc_2026_final"
 
 # --- CONEXIÓN MONGODB ---
 MONGO_URI = "mongodb+srv://control-jupiter:control-jupiter1234@cluster0.dtureen.mongodb.net/NestleDB?retryWrites=true&w=majority"
@@ -15,7 +15,7 @@ visitas_col = db['visitas']
 usuarios_col = db['usuarios']
 puntos_col = db['puntos_venta']
 
-# --- CSS (INCLUYE PERFIL SUPERIOR Y AJUSTES) ---
+# --- CSS INTEGRADO ---
 CSS_BI = """
 <style>
     :root { --primary: #005596; --dark: #002C5F; --bg: #F1F5F9; --sidebar-w: 280px; }
@@ -48,6 +48,8 @@ CSS_BI = """
     .list-item { background: white; padding: 18px; border-radius: 15px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; border-left: 5px solid var(--primary); }
     #map { height: 250px; width: 100%; border-radius: 15px; margin: 15px 0; display: none; }
     .img-tech { width: 100%; border-radius: 12px; margin-top: 10px; display: none; }
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+    th, td { text-align: left; padding: 12px; border-bottom: 1px solid #eee; }
 </style>
 """
 
@@ -65,18 +67,14 @@ def login():
 def index():
     if 'user_id' not in session: return redirect('/login')
     if session['role'] == 'asesor': return redirect('/formulario')
-    
     cursor = visitas_col.find({}, {"f_bmb": 0, "f_fachada": 0}).sort("fecha", -1)
     rows = "".join([f'<div class="list-item" onclick=\'verDetalle("{r["_id"]}", "{r.get("pv")}", "{r.get("fecha")}", "{r.get("n_documento")}", "{r.get("motivo")}", "{r.get("ubicacion")}", "{r.get("bmb")}")\'><div><b>{r.get("pv")}</b><br><small>{r.get("fecha")}</small></div><div style="color:var(--primary); font-weight:bold;">{r.get("bmb")}</div></div>' for r in cursor])
-    
     return render_template_string(f"""
     <html>
     <head><meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />{CSS_BI}</head>
     <body>
         <div id="overlay" class="overlay" onclick="closeAll()"></div>
-        
         <div class="profile-badge"><b>{session['user_name']}</b><small>{session['role']}</small></div>
-
         <div id="sidebar" class="sidebar">
             <h3 style="color:#FFF; margin-bottom:5px;">Andres BI</h3>
             <p style="font-size:12px; color:#94A3B8; margin-bottom:25px;">👤 {session['user_name']}</p>
@@ -86,17 +84,11 @@ def index():
             <div class="nav-link" onclick="openModal('modal_usuarios')">👥 Usuarios</div>
             <a href="/logout" class="nav-link" style="color:#F87171; margin-top:40px;">🚪 Cerrar Sesión</a>
         </div>
-
         <div class="main-content">
-            <div class="header-bar">
-                <button class="menu-toggle" onclick="toggleMenu()">☰</button>
-                <h2 style="margin:0;">Bienvenido, {session['user_name']}</h2>
-            </div>
+            <div class="header-bar"><button class="menu-toggle" onclick="toggleMenu()">☰</button><h2 style="margin:0;">Bienvenido, {session['user_name']}</h2></div>
             <div id="lista">{rows}</div>
         </div>
-        
         <div id="modal_detalle" class="modal-box"><div id="det_body"></div><button onclick="closeModal('modal_detalle')" class="btn btn-gray">Regresar</button></div>
-        
         <div id="modal_csv" class="modal-box">
             <h3>Carga Masiva de Puntos</h3>
             <a href="/descargar_plantilla" class="btn" style="background:#0D9488; color:white; margin-bottom:15px;">⬇️ Descargar Plantilla CSV</a>
@@ -108,57 +100,35 @@ def index():
             </form>
             <button onclick="closeModal('modal_csv')" class="btn btn-gray">Cerrar</button>
         </div>
-
         <div id="modal_usuarios" class="modal-box" style="max-width:850px;">
             <div style="display:flex; justify-content:space-between;"><h3>Usuarios</h3><button onclick="document.getElementById('form_user').style.display='block'; resetUserForm();" class="btn btn-primary" style="width:auto;">+ Nuevo</button></div>
             <div id="form_user" style="display:none; background:#f4f4f4; padding:20px; border-radius:15px; margin:15px 0;">
                 <h4 id="user_title">Nuevo Usuario</h4>
                 <form action="/guardar_usuario" method="POST">
-                    <input type="hidden" name="id" id="edit_id">
-                    <input type="text" name="nombre" id="edit_nom" placeholder="Nombre Completo" required>
-                    <input type="text" name="user" id="edit_usr" placeholder="Usuario Login" required>
-                    <input type="password" name="pass" id="edit_pas" placeholder="Contraseña" required>
-                    <select name="rol" id="edit_rol"><option value="asesor">Asesor</option><option value="admin">Admin</option></select>
-                    <button class="btn btn-primary">Guardar</button>
+                    <input type="hidden" name="id" id="edit_id"><input type="text" name="nombre" id="edit_nom" placeholder="Nombre Completo" required><input type="text" name="user" id="edit_usr" placeholder="Usuario Login" required><input type="password" name="pass" id="edit_pas" placeholder="Contraseña" required><select name="rol" id="edit_rol"><option value="asesor">Asesor</option><option value="admin">Admin</option></select><button class="btn btn-primary">Guardar</button>
                 </form>
             </div>
             <table><thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Acción</th></tr></thead><tbody id="user_table"></tbody></table>
             <button onclick="closeModal('modal_usuarios')" class="btn btn-gray">Regresar</button>
         </div>
-
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
         <script>
             function toggleMenu() {{ document.getElementById('sidebar').classList.toggle('active'); document.getElementById('overlay').style.display = document.getElementById('sidebar').classList.contains('active') ? 'block' : 'none'; }}
             function openModal(id) {{ closeAll(); document.getElementById('overlay').style.display = 'block'; document.getElementById(id).style.display = 'block'; if(id==='modal_usuarios') cargarUsuarios(); }}
             function closeModal(id) {{ document.getElementById(id).style.display = 'none'; document.getElementById('overlay').style.display = 'none'; }}
             function closeAll() {{ document.querySelectorAll('.modal-box').forEach(m => m.style.display = 'none'); document.getElementById('sidebar').classList.remove('active'); document.getElementById('overlay').style.display = 'none'; }}
-            window.addEventListener('keydown', e => {{ if(e.key === 'Escape') closeAll(); }});
-
             async function subirCsv() {{
-                const fileInput = document.getElementById('fileCsv');
-                if(!fileInput.files[0]) return alert("Selecciona un archivo");
-                const formData = new FormData();
-                formData.append('file_csv', fileInput.files[0]);
-                document.getElementById('progCont').style.display = 'block';
-                document.getElementById('btnSubir').disabled = true;
-                document.getElementById('statusMsg').innerText = "Cargando...";
-                let bar = document.getElementById('progBar');
-                let width = 0;
+                const fileInput = document.getElementById('fileCsv'); if(!fileInput.files[0]) return alert("Selecciona un archivo");
+                const formData = new FormData(); formData.append('file_csv', fileInput.files[0]);
+                document.getElementById('progCont').style.display = 'block'; document.getElementById('btnSubir').disabled = true; document.getElementById('statusMsg').innerText = "Cargando...";
+                let bar = document.getElementById('progBar'); let width = 0;
                 let interval = setInterval(() => {{ if(width >= 90) clearInterval(interval); else {{ width += 10; bar.style.width = width + '%'; }} }}, 150);
                 try {{
                     const res = await fetch('/carga_masiva_puntos', {{ method: 'POST', body: formData }});
                     clearInterval(interval);
-                    if(res.ok) {{
-                        bar.style.width = '100%';
-                        document.getElementById('statusMsg').style.color = 'green';
-                        document.getElementById('statusMsg').innerText = "✅ ¡Cargado correctamente!";
-                    }} else {{ throw new Error(); }}
-                }} catch(e) {{
-                    document.getElementById('statusMsg').style.color = 'red';
-                    document.getElementById('statusMsg').innerText = "❌ Error al cargar. Verifica el delimitador ;";
-                }} finally {{ document.getElementById('btnSubir').disabled = false; }}
+                    if(res.ok) {{ bar.style.width = '100%'; document.getElementById('statusMsg').style.color = 'green'; document.getElementById('statusMsg').innerText = "✅ ¡Cargado correctamente!"; }} else {{ throw new Error(); }}
+                }} catch(e) {{ document.getElementById('statusMsg').style.color = 'red'; document.getElementById('statusMsg').innerText = "❌ Error al cargar. Verifica el delimitador ;"; }} finally {{ document.getElementById('btnSubir').disabled = false; }}
             }}
-
             async function cargarUsuarios() {{
                 const res = await fetch('/api/usuarios'); const users = await res.json();
                 document.getElementById('user_table').innerHTML = users.map(u => `<tr><td>${{u.nombre_completo}}</td><td>${{u.usuario}}</td><td>${{u.rol}}</td><td><button onclick='editarU(${{JSON.stringify(u)}})' style='background:none; border:none; color:blue; cursor:pointer;'>Editar</button></td></tr>`).join('');
@@ -212,9 +182,14 @@ def carga():
     if f:
         try:
             content = f.stream.read().decode("utf-8-sig")
-            reader = csv.DictReader(io.StringIO(content), delimiter=';')
-            puntos_col.delete_many({}); puntos_col.insert_many(list(reader))
-            return "OK", 200
+            stream = io.StringIO(content)
+            reader = csv.DictReader(stream, delimiter=';')
+            lista_puntos = []
+            for row in reader:
+                lista_puntos.append({k.strip(): v.strip() for k, v in row.items() if k is not None})
+            if lista_puntos:
+                puntos_col.delete_many({}); puntos_col.insert_many(lista_puntos)
+                return "OK", 200
         except: return "Error", 500
     return "No File", 400
 
@@ -231,17 +206,17 @@ def guardar_u():
     else: usuarios_col.insert_one(datos)
     return redirect('/')
 
+@app.route('/api/usuarios')
+def api_users():
+    users = list(usuarios_col.find()); [u.update({"_id": str(u["_id"])}) for u in users]
+    return jsonify(users)
+
 @app.route('/get_img/<id>')
 def get_img(id):
     try:
         d = visitas_col.find_one({"_id": ObjectId(id)})
         return jsonify({"f1": d.get('f_bmb'), "f2": d.get('f_fachada')})
     except: return jsonify({"f1": "", "f2": ""})
-
-@app.route('/api/usuarios')
-def api_users():
-    users = list(usuarios_col.find()); [u.update({"_id": str(u["_id"])}) for u in users]
-    return jsonify(users)
 
 @app.route('/descargar')
 def desc():
