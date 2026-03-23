@@ -5,7 +5,7 @@ import base64, io, csv
 from datetime import datetime
 
 app = Flask(__name__)
-app.secret_key = "nestle_bi_poc_2026_verde_final_v7"
+app.secret_key = "nestle_bi_poc_2026_verde_final_v8"
 
 # --- CONEXIÓN MONGODB ---
 MONGO_URI = "mongodb+srv://control-jupiter:control-jupiter1234@cluster0.dtureen.mongodb.net/NestleDB?retryWrites=true&w=majority"
@@ -15,42 +15,36 @@ visitas_col = db['visitas']
 usuarios_col = db['usuarios']
 puntos_col = db['puntos_venta']
 
-# --- DISEÑO VERDE OSCURO ---
+# --- DISEÑO VERDE OSCURO PROFESIONAL ---
 CSS_BI = """
 <style>
     :root { --primary: #1B4332; --dark: #081C15; --accent: #40916C; --bg: #081C15; }
-    body { 
-        font-family: 'Segoe UI', sans-serif; 
-        background: radial-gradient(circle, #1b4332 0%, #081c15 100%); 
-        margin: 0; display: flex; color: white; min-height: 100vh;
-    }
+    body { font-family: 'Segoe UI', sans-serif; background: radial-gradient(circle, #1b4332 0%, #081c15 100%); margin: 0; color: white; min-height: 100vh; }
+    
     .sidebar { position: fixed; left: -280px; top: 0; width: 280px; height: 100%; background: var(--dark); color: white; transition: 0.3s; z-index: 2100; padding: 25px; box-sizing: border-box; border-right: 1px solid var(--accent); }
     .sidebar.active { left: 0; }
-    .nav-link { display: block; color: #D8F3DC; text-decoration: none; padding: 15px; border-radius: 12px; margin-bottom: 8px; cursor: pointer; border: none; background: transparent; width: 100%; text-align: left; font-size: 16px; }
-    .nav-link:hover { background: var(--primary); }
+    .nav-link { display: block; color: #D8F3DC; text-decoration: none; padding: 15px; border-radius: 12px; margin-bottom: 8px; cursor: pointer; border: none; background: transparent; width: 100%; text-align: left; font-size: 16px; font-weight: 500; }
+    .nav-link:hover { background: var(--primary); color: white; }
     
-    .profile-badge { position: absolute; top: 20px; right: 20px; background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); padding: 8px 15px; border-radius: 30px; border: 1px solid var(--accent); display: flex; flex-direction: column; align-items: flex-end; z-index: 1000; }
-    .profile-badge b { color: #D8F3DC; font-size: 14px; }
+    .main-content { width: 100%; padding: 20px; box-sizing: border-box; }
+    .profile-badge { position: absolute; top: 20px; right: 20px; background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); padding: 8px 15px; border-radius: 30px; border: 1px solid var(--accent); z-index: 1000; text-align: right; }
     
-    .main-content { width: 100%; padding: 20px; transition: 0.3s; position: relative; }
-    .card { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(15px); border-radius: 24px; padding: 30px; border: 1px solid rgba(255,255,255,0.1); box-sizing: border-box; width: 100%; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+    .card { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(15px); border-radius: 24px; padding: 25px; border: 1px solid rgba(255,255,255,0.1); width: 100%; box-shadow: 0 20px 50px rgba(0,0,0,0.5); box-sizing: border-box; }
     
-    .btn { width: 100%; padding: 14px; border-radius: 12px; font-weight: 700; cursor: pointer; border: none; transition: 0.2s; text-decoration: none; display: inline-block; font-size: 14px; box-sizing: border-box; margin-top: 15px; text-align: center; }
+    .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 2000; }
+    .modal-box { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 700px; z-index: 2500; background: #1B4332; border-radius: 24px; padding: 30px; border: 1px solid var(--accent); max-height: 85vh; overflow-y: auto; color: white; }
+    
+    .btn { width: 100%; padding: 12px; border-radius: 10px; font-weight: 700; cursor: pointer; border: none; transition: 0.2s; text-decoration: none; display: inline-block; font-size: 14px; margin-top: 10px; text-align: center; box-sizing: border-box; }
     .btn-primary { background: var(--accent); color: white; }
+    .btn-gray { background: #495057; color: white; }
     .btn-logout { background: #BC4749; color: white; }
-    
-    label { display: block; margin-top: 12px; font-size: 13px; color: #B7E4C7; font-weight: 600; }
-    input, select, textarea { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid var(--accent); border-radius: 10px; background: rgba(0,0,0,0.2); color: white; box-sizing: border-box; }
-    
-    .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 2500; }
-    .modal-box { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 700px; z-index: 3000; background: #1B4332; border-radius: 24px; padding: 30px; border: 1px solid var(--accent); max-height: 85vh; overflow-y: auto; }
-    
-    .list-item { background: rgba(255,255,255,0.05); padding: 18px; border-radius: 15px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; border-left: 5px solid var(--accent); }
+
+    input, select, textarea { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid var(--accent); border-radius: 10px; background: rgba(0,0,0,0.3); color: white; box-sizing: border-box; }
+    .list-item { background: rgba(255,255,255,0.05); padding: 15px; border-radius: 15px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; border-left: 5px solid var(--accent); }
     #map { height: 250px; width: 100%; border-radius: 15px; margin: 15px 0; display: none; }
     .img-tech { width: 100%; border-radius: 12px; margin-top: 10px; display: none; border: 1px solid var(--accent); }
-    table { width: 100%; border-collapse: collapse; margin-top: 15px; color: white; }
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
     th, td { text-align: left; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); }
-    .debug-box { background: #000; color: #0f0; padding: 15px; border-radius: 10px; font-family: monospace; font-size: 11px; margin-top: 15px; display: none; white-space: pre; }
 </style>
 """
 
@@ -62,7 +56,7 @@ def login():
         if user:
             session.update({'user_id': str(user['_id']), 'user_name': user.get('nombre_completo'), 'role': user.get('rol', 'asesor')})
             return redirect('/')
-    return render_template_string(f"<html><head>{CSS_BI}</head><body style='justify-content:center; align-items:center;'><div class='card' style='max-width:350px; text-align:center;'><h2>SISTEMA POC</h2><form method='POST'><input type='text' name='usuario' placeholder='Usuario'><input type='password' name='password' placeholder='Password'><button class='btn btn-primary'>ENTRAR</button></form></div></body></html>")
+    return render_template_string(f"<html><head>{CSS_BI}</head><body style='display:flex; justify-content:center; align-items:center;'><div class='card' style='max-width:350px; text-align:center;'><h2>LOGIN POC</h2><form method='POST'><input type='text' name='usuario' placeholder='Usuario'><input type='password' name='password' placeholder='Password'><button class='btn btn-primary'>ENTRAR</button></form></div></body></html>")
 
 @app.route('/')
 def index():
@@ -75,7 +69,7 @@ def index():
     <head><meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />{CSS_BI}</head>
     <body>
         <div id="overlay" class="overlay" onclick="closeAll()"></div>
-        <div class="profile-badge"><b>{session['user_name']}</b><small>{session['role']}</small></div>
+        <div class="profile-badge"><b>{session['user_name']}</b><br><small>{session['role']}</small></div>
         <div id="sidebar" class="sidebar">
             <h3 style="color:#B7E4C7;">Andres BI</h3>
             <a href="/formulario" class="nav-link">📝 Nuevo Reporte</a>
@@ -85,23 +79,24 @@ def index():
             <a href="/logout" class="nav-link" style="color:#FFB3B3; margin-top:40px;">🚪 Cerrar Sesión</a>
         </div>
         <div class="main-content">
-            <button onclick="document.getElementById('sidebar').classList.toggle('active'); document.getElementById('overlay').style.display='block';" style="background:none; border:none; color:white; font-size:24px;">☰</button>
-            <h2 style="margin-top:20px;">Visitas Recientes</h2>
+            <button onclick="document.getElementById('sidebar').classList.toggle('active'); document.getElementById('overlay').style.display='block';" style="background:none; border:none; color:white; font-size:24px; cursor:pointer;">☰ MENÚ</button>
+            <h2 style="margin-top:20px;">Visitas Realizadas</h2>
             <div id="lista">{rows}</div>
         </div>
+        
         <div id="modal_detalle" class="modal-box"><div id="det_body"></div><button onclick="closeModal('modal_detalle')" class="btn btn-gray">Cerrar</button></div>
         
         <div id="modal_csv" class="modal-box">
             <h3>Carga Masiva de Puntos</h3>
             <input type="file" id="fileCsv" accept=".csv">
-            <div id="debug" class="debug-box"></div>
-            <button type="button" onclick="subirCsv()" class="btn btn-primary">Actualizar Base PDV</button>
+            <div id="debug" style="background:black; color:lime; padding:10px; margin-top:10px; font-family:monospace; font-size:10px; display:none; white-space:pre;"></div>
+            <button type="button" onclick="subirCsv()" class="btn btn-primary">Actualizar Base</button>
             <button onclick="closeModal('modal_csv')" class="btn btn-gray">Cerrar</button>
         </div>
 
         <div id="modal_usuarios" class="modal-box">
-            <div style="display:flex; justify-content:space-between;"><h3>Usuarios</h3><button onclick="document.getElementById('form_user').style.display='block';" class="btn btn-primary" style="width:auto;">+ Nuevo</button></div>
-            <div id="form_user" style="display:none; margin-bottom:20px;">
+            <div style="display:flex; justify-content:space-between;"><h3>Usuarios</h3><button onclick="document.getElementById('form_user').style.display='block';" class="btn btn-primary" style="width:auto; padding:5px 15px;">+ Nuevo</button></div>
+            <div id="form_user" style="display:none; margin-top:15px; background:rgba(0,0,0,0.2); padding:15px; border-radius:15px;">
                 <form action="/guardar_usuario" method="POST">
                     <input type="hidden" name="id" id="edit_id"><input type="text" name="nombre" id="edit_nom" placeholder="Nombre" required><input type="text" name="user" id="edit_usr" placeholder="Usuario" required><input type="password" name="pass" id="edit_pas" placeholder="Pass" required><select name="rol" id="edit_rol"><option value="asesor">Asesor</option><option value="admin">Admin</option></select><button class="btn btn-primary">Guardar</button>
                 </form>
@@ -120,18 +115,18 @@ def index():
                 const formData = new FormData(); formData.append('file_csv', document.getElementById('fileCsv').files[0]);
                 const res = await fetch('/carga_masiva_puntos', {{ method: 'POST', body: formData }});
                 const data = await res.json();
-                document.getElementById('debug').style.display = 'block'; document.getElementById('debug').innerText = "VISTA PREVIA:\\n" + data.preview;
-                if(res.ok) alert("✅ Cargado con éxito: " + data.count + " registros");
+                if(res.ok) alert("✅ Cargado: " + data.count + " registros");
+                else alert("Error al cargar");
             }}
 
             async function cargarUsuarios() {{
                 const res = await fetch('/api/usuarios'); const users = await res.json();
-                document.getElementById('user_table').innerHTML = users.map(u => `<tr><td>${{u.nombre_completo}}</td><td>${{u.rol}}</td><td><button onclick='editarU(${{JSON.stringify(u)}})' style='color:#95D5B2; background:none; border:none;'>Editar</button></td></tr>`).join('');
+                document.getElementById('user_table').innerHTML = users.map(u => `<tr><td>${{u.nombre_completo}}</td><td>${{u.rol}}</td><td><button onclick='editarU(${{JSON.stringify(u)}})' style='color:#B7E4C7; background:none; border:none; cursor:pointer;'>Editar</button></td></tr>`).join('');
             }}
             function editarU(u) {{ document.getElementById('form_user').style.display='block'; document.getElementById('edit_id').value=u._id; document.getElementById('edit_nom').value=u.nombre_completo; document.getElementById('edit_usr').value=u.usuario; document.getElementById('edit_pas').value=u.password; document.getElementById('edit_rol').value=u.rol; }}
 
             function verDetalle(id, pv, f, doc, mot, gps, bmb, nota) {{ 
-                document.getElementById('det_body').innerHTML = `<h3>${{pv}}</h3><p><b>BMB:</b> ${{bmb}}<br><b>Fecha:</b> ${{f}}<br><b>Asesor:</b> ${{doc}}</p><p><b>Nota:</b> ${{nota}}</p><button id="ld_b" class="btn btn-primary" onclick="loadM('${{id}}','${{gps}}')">Ver Fotos y Mapa</button><div id="map"></div><img id="im1" class="img-tech"><img id="im2" class="img-tech">`; 
+                document.getElementById('det_body').innerHTML = `<h3>${{pv}}</h3><p><b>BMB:</b> ${{bmb}}<br><b>Fecha:</b> ${{f}}<br><b>Asesor:</b> ${{doc}}</p><p><b>Nota:</b> ${{nota}}</p><button id="ld_b" class="btn btn-primary" onclick="loadM('${{id}}','${{gps}}')">Ver Evidencia</button><div id="map"></div><img id="im1" class="img-tech"><img id="im2" class="img-tech">`; 
                 openModal('modal_detalle'); 
             }}
             async function loadM(id, gps) {{ 
@@ -164,11 +159,9 @@ def formulario():
     
     return render_template_string(f"""
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">{CSS_BI}</head>
-    <body onload="getGPS()" style="justify-content:center; align-items:center; display:flex; padding:20px;">
-        <div class="profile-badge"><b>{session['user_name']}</b></div>
-        
+    <body onload="getGPS()" style="display:flex; justify-content:center; align-items:center; padding:20px;">
         <div id="over" class="overlay" style="display:{'block' if msg_ok else 'none'};" onclick="location.href='/formulario'"></div>
-        <div class="modal-box" style="display:{'block' if msg_ok else 'none'}; text-align:center;">
+        <div class="modal-box" style="display:{'block' if msg_ok else 'none'}; text-align:center; max-width:350px;">
             <h1 style="font-size:60px; margin:0;">✅</h1>
             <h2>¡Registro Exitoso!</h2>
             <button onclick="location.href='/formulario'" class="btn btn-primary">Aceptar</button>
@@ -178,9 +171,9 @@ def formulario():
             <h2 style="text-align:center; color:#B7E4C7; margin-top:0;">REPORTE DE VISITA</h2>
             <form method="POST" enctype="multipart/form-data">
                 <label>Punto de Venta</label>
-                <input list="p" name="pv" id="pv_i" onchange="upBMB()" required><datalist id="p">{options}</datalist>
+                <input list="p" name="pv" id="pv_i" onchange="upBMB()" placeholder="Buscar PDV..." required><datalist id="p">{options}</datalist>
                 
-                <label>Dato BMB (Auto)</label>
+                <label>BMB del Punto (Auto)</label>
                 <input type="text" name="bmb" id="bmb_i" readonly style="background:rgba(255,255,255,0.05);">
                 
                 <label>Fecha</label><input type="date" name="fecha" value="{datetime.now().strftime('%Y-%m-%d')}">
@@ -199,7 +192,7 @@ def formulario():
                 
                 <input type="hidden" name="ubicacion" id="g">
                 <button class="btn btn-primary">ENVIAR REGISTRO</button>
-                {f'<a href="/" class="btn btn-gray" style="background:#64748B; color:white;">Volver al Panel</a>' if session['role']=='admin' else ''}
+                {f'<a href="/" class="btn btn-gray">Volver al Panel</a>' if session['role']=='admin' else ''}
                 <a href="/logout" class="btn btn-logout">SALIDA / DESLOGUEO</a>
             </form>
         </div>
@@ -223,13 +216,15 @@ def carga():
         reader = csv.DictReader(io.StringIO(content), delimiter=d)
         lista = [{k.strip(): v.strip() for k, v in r.items() if k} for r in reader]
         puntos_col.delete_many({}); puntos_col.insert_many(lista)
-        return jsonify({"preview": content[:150], "count": len(lista)})
-    return jsonify({"preview": "Error"}), 400
+        return jsonify({"count": len(lista)})
+    return jsonify({"error": "No file"}), 400
 
-@app.route('/get_img/<id>')
-def get_img(id):
-    d = visitas_col.find_one({"_id": ObjectId(id)})
-    return jsonify({"f1": d.get('f_bmb'), "f2": d.get('f_fachada')})
+@app.route('/descargar')
+def desc():
+    cursor = visitas_col.find({}, {"f_bmb": 0, "f_fachada": 0, "_id": 0})
+    si = io.StringIO(); w = csv.writer(si); w.writerow(['Punto', 'Asesor', 'Fecha', 'BMB', 'Motivo', 'Nota'])
+    for r in cursor: w.writerow([r.get('pv'), r.get('n_documento'), r.get('fecha'), r.get('bmb'), r.get('motivo'), r.get('Nota')])
+    return Response(si.getvalue(), mimetype='text/csv', headers={"Content-Disposition":"attachment;filename=Reporte_BI.csv"})
 
 @app.route('/api/usuarios')
 def api_users():
@@ -244,12 +239,10 @@ def guardar_u():
     else: usuarios_col.insert_one(d)
     return redirect('/')
 
-@app.route('/descargar')
-def desc():
-    cursor = visitas_col.find({}, {"f_bmb": 0, "f_fachada": 0, "_id": 0})
-    si = io.StringIO(); w = csv.writer(si); w.writerow(['Punto', 'Asesor', 'Fecha', 'BMB', 'Motivo', 'Nota'])
-    for r in cursor: w.writerow([r.get('pv'), r.get('n_documento'), r.get('fecha'), r.get('bmb'), r.get('motivo'), r.get('Nota')])
-    return Response(si.getvalue(), mimetype='text/csv', headers={"Content-Disposition":"attachment;filename=Reporte.csv"})
+@app.route('/get_img/<id>')
+def get_img(id):
+    d = visitas_col.find_one({"_id": ObjectId(id)})
+    return jsonify({"f1": d.get('f_bmb'), "f2": d.get('f_fachada')})
 
 @app.route('/logout')
 def logout(): session.clear(); return redirect('/login')
