@@ -1,7 +1,7 @@
 from flask import Flask, render_template_string, request, redirect, jsonify, Response, session
 from pymongo import MongoClient
 from bson.objectid import ObjectId
-import base64, io, csv, math
+import base64, io, csv
 from datetime import datetime
 
 app = Flask(__name__)
@@ -14,21 +14,8 @@ db = client['NestleDB']
 visitas_col = db['visitas']
 usuarios_col = db['usuarios']
 puntos_col = db['puntos_venta']
-auditoria_col = db['auditoria_bmb'] 
 
-# --- FUNCIÓN DISTANCIA ---
-def calcular_distancia(pos1, pos2):
-    if not pos1 or not pos2: return 0
-    try:
-        lat1, lon1 = map(float, pos1.split(','))
-        lat2, lon2 = map(float, pos2.split(','))
-        R = 6371000
-        phi1, phi2 = math.radians(lat1), math.radians(lat2)
-        dphi, dlambda = math.radians(lat2 - lat1), math.radians(lon2 - lon1)
-        a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
-        return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1-a))
-    except: return 0
-
+# --- CSS (Mantenido Original) ---
 CSS_BI = """
 <style>
     :root { --primary: #1B4332; --dark: #081C15; --accent: #40916C; --bg: #081C15; }
@@ -58,84 +45,96 @@ def login():
         if user:
             session.update({'user_id': str(user['_id']), 'user_name': user.get('nombre_completo'), 'role': user.get('rol', 'asesor')})
             return redirect('/')
-    return render_template_string(f"<html><head>{CSS_BI}</head><body style='display:flex; justify-content:center; align-items:center;'><div class='card' style='max-width:350px; text-align:center;'><h2>CMR ASISTENCIA A POC</h2><form method='POST'><input type='text' name='usuario' placeholder='Usuario'><input type='password' name='password' placeholder='Password'><button class='btn btn-primary'>ENTRAR</button></form></div></body></html>")
+    return render_template_string(f"<html><head>{CSS_BI}</head><body style='display:flex; justify-content:center; align-items:center;'><div class='card' style='max-width:350px; text-align:center;'><h2>CMR ASISTENCIA A POC</h2><form method='POST'><input type='text' name='usuario' placeholder='Usuario'><input type='password' name='password' placeholder='Password'><button class='btn btn-primary'>ENTRAR</button></form></div>{FOOTER_HTML}</body></html>")
 
 @app.route('/')
 def index():
     if 'user_id' not in session: return redirect('/login')
     if session['role'] == 'asesor': return redirect('/formulario')
-    cursor = visitas_col.find({"estado": {"$ne": "Pendiente"}}, {"f_bmb": 0, "f_fachada": 0}).sort("fecha", -1)
-    rows = "".join([f'<div class="list-item" style="background: rgba(255,255,255,0.05); padding:15px; border-radius:15px; margin-bottom:10px; border-left:5px solid var(--accent);"><b>{r.get("pv")}</b><br><small>{r.get("fecha")}</small> - {r.get("bmb")}</div>' for r in cursor])
+    cursor = visitas_col.find({}, {"f_bmb": 0, "f_fachada": 0}).sort("fecha", -1)
+    rows = "".join([f'<div class="list-item" style="background: rgba(255,255,255,0.05); padding:15px; border-radius:15px; margin-bottom:10px; border-left:5px solid var(--accent); cursor:pointer;" onclick=\'verDetalle("{r["_id"]}", "{r.get("pv")}", "{r.get("fecha")}", "{r.get("n_documento")}", "{r.get("motivo")}", "{r.get("ubicacion")}", "{r.get("bmb")}", "{r.get("Nota","")}")\'><div><b>{r.get("pv")}</b><br><small>{r.get("fecha")}</small></div><div style="color:#95D5B2;">{r.get("bmb")}</div></div>' for r in cursor])
     return render_template_string(f"""
-    <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">{CSS_BI}</head>
+    <html>
+    <head><meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />{CSS_BI}</head>
     <body>
+        <div id="overlay" class="overlay" onclick="closeAll()"></div>
         <div id="sidebar" class="sidebar">
-            <h3 style="color:#B7E4C7; text-align:center;">MENU</h3>
+            <h3 style="color:#B7E4C7; text-align:center;">MENU ADMIN</h3>
             <a href="/formulario" class="nav-link">Nuevo Reporte</a>
             <a href="/validacion_bmb" class="nav-link" style="color:#FFD97D;">Validación BMB 📋</a>
-            <a href="/validacion_visitas" class="nav-link">Validación GPS</a>
-            <a href="/logout" class="nav-link" style="color:#FFB3B3;">Cerrar Sesión</a>
+            <div class="nav-link" onclick="openModal('modal_puntos')">Gestión de Puntos</div>
+            <a href="/descargar" class="nav-link">Reporte Excel</a>
+            <div class="nav-link" onclick="openModal('modal_csv')">Carga Masiva CSV</div>
+            <div class="nav-link" onclick="openModal('modal_usuarios')">Usuarios</div>
+            <a href="/logout" class="nav-link" style="color:#FFB3B3; margin-top:40px;">Cerrar Sesión</a>
         </div>
-        <div style="padding:20px;">
-            <button onclick="document.getElementById('sidebar').classList.toggle('active')" style="background:none; border:none; color:white; font-size:24px;">☰ Menú</button>
-            <h2>Visitas Recientes</h2>
+        <div class="main-content" style="padding:20px;">
+            <button onclick="toggleMenu()" style="background:none; border:none; color:white; font-size:24px; cursor:pointer;">☰ Menú</button>
+            <h2 style="margin-top:20px;">Visitas Realizadas</h2>
             <div id="lista">{rows}</div>
         </div>
+        <div id="modal_detalle" class="modal-box"><div id="det_body"></div><button onclick="closeAll()" class="btn btn-gray">REGRESAR (ESC)</button></div>
+        <div id="modal_puntos" class="modal-box"><h3>📍 Gestión de Puntos</h3><input type="text" id="f_pv" placeholder="Filtrar... " onkeyup="filtrarPuntos()"><div style="overflow-x:auto;"><table id="table_main_puntos"><thead></thead><tbody id="puntos_table"></tbody></table></div><button onclick="closeAll()" class="btn btn-gray">REGRESAR</button></div>
+        <div id="modal_usuarios" class="modal-box"><h3>👥 Usuarios</h3><div style="overflow-x:auto;"><table><tbody id="user_table"></tbody></table></div><button onclick="closeAll()" class="btn btn-gray">REGRESAR</button></div>
+        <div id="modal_edit_punto" class="modal-box modal-mini"></div>
+        <div id="modal_csv" class="modal-box"><h3>⚙️ Carga Masiva</h3><input type="file" id="fileCsv" accept=".csv"><button onclick="subirCsv()" class="btn btn-primary">Procesar</button></div>
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        <script>
+            function toggleMenu() {{ document.getElementById('sidebar').classList.toggle('active'); document.getElementById('overlay').style.display = document.getElementById('sidebar').classList.contains('active') ? 'block' : 'none'; }}
+            function openModal(id) {{ closeAll(); document.getElementById('overlay').style.display='block'; document.getElementById(id).style.display='block'; if(id==='modal_puntos') cargarPuntos(); if(id==='modal_usuarios') cargarUsuarios(); }}
+            function closeAll() {{ document.querySelectorAll('.modal-box').forEach(m => m.style.display='none'); document.getElementById('sidebar').classList.remove('active'); document.getElementById('overlay').style.display='none'; }}
+            async function cargarPuntos() {{ const res = await fetch('/api/puntos'); const puntos = await res.json(); renderPuntos(puntos); }}
+            function renderPuntos(lista) {{ if(!lista.length) return; const cols = Object.keys(lista[0]).filter(k => k !== '_id'); document.getElementById('puntos_table').innerHTML = lista.map(p => `<tr>${{cols.map(c => `<td>${{p[c]||''}}</td>`).join('')}}</tr>`).join(''); }}
+            function verDetalle(id, pv, f, doc, mot, gps, bmb, nota) {{ document.getElementById('det_body').innerHTML = `<h3>${{pv}}</h3><p>BMB: ${{bmb}}</p><button class="btn btn-primary" onclick="loadM('${{id}}','${{gps}}')">Ver Evidencia</button><div id="map" style="height:200px; display:none;"></div><img id="im1" style="width:100%; display:none;"><img id="im2" style="width:100%; display:none;">`; openModal('modal_detalle'); }}
+            async function loadM(id, gps) {{ const res = await fetch('/get_img/'+id); const d = await res.json(); document.getElementById('im1').src=d.f1; document.getElementById('im1').style.display='block'; document.getElementById('im2').src=d.f2; document.getElementById('im2').style.display='block'; }}
+        </script>
     </body></html>
     """)
 
 @app.route('/formulario', methods=['GET', 'POST'])
 def formulario():
     if 'user_id' not in session: return redirect('/login')
-    msg = request.args.get('msg')
     if request.method == 'POST':
         def b64(f): return f"data:{f.content_type};base64,{base64.b64encode(f.read()).decode()}" if f else ""
         pv = request.form.get('pv')
         bmb_input = request.form.get('bmb')
-        gps = request.form.get('ubicacion')
-        punto = puntos_col.find_one({"Punto de Venta": pv})
-        bmb_original = punto.get('BMB') if punto else ""
+        punto_db = puntos_col.find_one({"Punto de Venta": pv})
+        bmb_actual = punto_db.get('BMB') if punto_db else ""
         
-        # Lógica de Validación: Si el BMB cambia, se marca como pendiente
-        es_cambio_bmb = bmb_input != bmb_original
-        dist = calcular_distancia(gps, punto.get('Ruta')) if punto else 0
-        puntos_col.update_one({"Punto de Venta": pv}, {"$set": {"Ruta": gps}})
-        
+        # Si el BMB es diferente al de la base, marcamos como pendiente
+        es_edicion = bmb_input != bmb_actual
+
         visitas_col.insert_one({
             "pv": pv, "n_documento": session['user_name'], "fecha": request.form.get('fecha'),
-            "bmb": bmb_original, "bmb_propuesto": bmb_input, "bmb_pendiente": es_cambio_bmb,
-            "motivo": request.form.get('motivo'), "ubicacion": gps, "distancia": round(dist,1),
-            "estado": "Pendiente" if dist > 100 else "Aprobado", "Nota": request.form.get('nota'),
+            "bmb": bmb_actual, 
+            "bmb_propuesto": bmb_input,
+            "bmb_pendiente": es_edicion,
+            "motivo": request.form.get('motivo'), "ubicacion": request.form.get('ubicacion'), 
+            "Nota": request.form.get('nota'), 
             "f_bmb": b64(request.files.get('f1')), "f_fachada": b64(request.files.get('f2'))
         })
         return redirect('/formulario?msg=OK')
-
+    
     puntos = list(puntos_col.find({}, {"Punto de Venta": 1, "BMB": 1}))
-    opts = "".join([f'<option value="{p["Punto de Venta"]}" data-bmb="{p.get("BMB","")}"> ' for p in puntos])
+    options = "".join([f'<option value="{p["Punto de Venta"]}" data-bmb="{p.get("BMB","")}"> ' for p in puntos])
     return render_template_string(f"""
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">{CSS_BI}</head>
     <body onload="getGPS()" style="display:flex; justify-content:center; align-items:center; padding:20px;">
         <div class="card" style="max-width:480px;">
             <h2 style="text-align:center;">NUEVA VISITA</h2>
             <form method="POST" enctype="multipart/form-data">
-                <label>Punto</label><input list="p" name="pv" id="pv_i" onchange="upBMB()" required><datalist id="p">{opts}</datalist>
-                <label>BMB (Editable)</label><input type="text" name="bmb" id="bmb_i">
-                <label>Motivo</label><select name="motivo"><option>Visita a POC</option><option>Punto Cerrado</option></select>
+                <label>Punto</label><input list="p" name="pv" id="pv_i" onchange="upBMB()" required><datalist id="p">{options}</datalist>
+                <label>BMB (Editable para corregir)</label><input type="text" name="bmb" id="bmb_i">
+                <label>Motivo</label><select name="motivo"><option>Visita Exitosa</option><option>Punto Cerrado</option></select>
                 <label>Fecha</label><input type="date" name="fecha" value="{datetime.now().strftime('%Y-%m-%d')}">
-                <label>Nota</label><textarea name="nota"></textarea>
-                <label>Foto BMB</label><input type="file" name="f1" accept="image/*" capture="camera" required>
+                <label>Foto Evidencia BMB</label><input type="file" name="f1" accept="image/*" capture="camera" required>
                 <label>Foto Fachada</label><input type="file" name="f2" accept="image/*" capture="camera" required>
                 <input type="hidden" name="ubicacion" id="g"><button class="btn btn-primary">GUARDAR</button>
-                <a href="/" class="btn btn-gray">VOLVER</a>
             </form>
         </div>
         <script>
             function getGPS(){{navigator.geolocation.getCurrentPosition(p=>document.getElementById('g').value=p.coords.latitude+','+p.coords.longitude);}}
-            function upBMB() {{ 
-                const v = document.getElementById('pv_i').value;
-                const o = Array.from(document.getElementById('p').options).find(opt => opt.value === v);
-                if(o) document.getElementById('bmb_i').value = o.dataset.bmb;
-            }}
+            function upBMB() {{ const v=document.getElementById('pv_i').value; const o=Array.from(document.getElementById('p').options).find(x=>x.value===v); if(o) document.getElementById('bmb_i').value=o.dataset.bmb; }}
         </script>
     </body></html>
     """)
@@ -145,31 +144,18 @@ def validacion_bmb():
     if 'user_id' not in session or session['role'] != 'admin': return redirect('/')
     pends = list(visitas_col.find({"bmb_pendiente": True}))
     rows = "".join([f"""
-        <div class='card' style='margin-bottom:20px;'>
+        <div class='card' style='margin-bottom:15px;'>
             <h3>{r['pv']}</h3>
-            <p><b>BMB Actual:</b> {r['bmb']} | <b>Propuesto:</b> {r['bmb_propuesto']}</p>
-            <p>Asesor: {r['n_documento']} | Fecha: {r['fecha']}</p>
+            <p>BMB Actual: <b>{r['bmb']}</b> -> Propuesto: <b style='color:#95D5B2;'>{r['bmb_propuesto']}</b></p>
             <div style='display:flex; gap:10px;'>
                 <img src='{r['f_bmb']}' style='width:50%; border-radius:10px;'>
                 <img src='{r['f_fachada']}' style='width:50%; border-radius:10px;'>
             </div>
-            <button class='btn btn-primary' onclick="aprobarBmb('{r['_id']}')">APROBAR CAMBIO ✅</button>
-            <button class='btn btn-gray' onclick="rechazarBmb('{r['_id']}')">RECHAZAR ❌</button>
+            <button class='btn btn-primary' onclick="aprobar('{r['_id']}')">APROBAR CAMBIO</button>
+            <button class='btn btn-gray' onclick="rechazar('{r['_id']}')">RECHAZAR</button>
         </div>
     """ for r in pends])
-    return render_template_string(f"""
-    <html><head>{CSS_BI}</head><body>
-        <div style="padding:20px;">
-            <h2>Validación Manual de BMB</h2>
-            {rows if pends else '<p>No hay ediciones pendientes.</p>'}
-            <br><a href="/" class="btn btn-gray">Regresar</a>
-        </div>
-        <script>
-            async function aprobarBmb(id) {{ if(confirm("¿Aprobar nuevo BMB en la base?")) {{ await fetch('/api/aprobar_bmb/'+id); location.reload(); }} }}
-            async function rechazarBmb(id) {{ if(confirm("¿Rechazar? Se mantendrá el anterior.")) {{ await fetch('/api/rechazar_bmb/'+id); location.reload(); }} }}
-        </script>
-    </body></html>
-    """)
+    return render_template_string(f"<html><head>{CSS_BI}</head><body><div style='padding:20px;'><h2>Solicitudes de Cambio BMB</h2>{rows or '<p>No hay pendientes</p>'}<br><a href='/' class='btn btn-gray'>Volver</a></div><script>async function aprobar(id){{ await fetch('/api/aprobar_bmb/'+id); location.reload(); }} async function rechazar(id){{ await fetch('/api/rechazar_bmb/'+id); location.reload(); }}</script></body></html>")
 
 @app.route('/api/aprobar_bmb/<id>')
 def api_aprobar_bmb(id):
@@ -183,18 +169,11 @@ def api_rechazar_bmb(id):
     visitas_col.update_one({"_id": ObjectId(id)}, {"$set": {"bmb_pendiente": False}})
     return jsonify({"s": "ok"})
 
-@app.route('/validacion_visitas')
-def validacion_visitas():
-    if 'user_id' not in session or session['role'] != 'admin': return redirect('/')
-    pends = list(visitas_col.find({"estado": "Pendiente"}))
-    rows = "".join([f"<tr><td>{r['pv']}</td><td>{r['distancia']}m</td><td><button onclick='ap(\"{r['_id']}\")'>Aprobar</button></td></tr>" for r in pends])
-    return render_template_string(f"<html><head>{CSS_BI}</head><body><div style='padding:20px;'><table>{rows}</table><a href='/'>Volver</a></div><script>async function ap(id){{await fetch('/api/aprobar_visita/'+id);location.reload();}}</script></body></html>")
-
-@app.route('/api/aprobar_visita/<id>')
-def api_aprobar_visita(id):
-    visitas_col.update_one({"_id": ObjectId(id)}, {"$set": {"estado": "Aprobado"}})
-    return jsonify({"s": "ok"})
-
+# --- RUTAS DE GESTIÓN (Mantenidas de tu final2.1.py) ---
+@app.route('/api/puntos')
+def api_puntos(): p = list(puntos_col.find()); [x.update({"_id": str(x["_id"])}) for x in p]; return jsonify(p)
+@app.route('/get_img/<id>')
+def get_img(id): d = visitas_col.find_one({"_id": ObjectId(id)}); return jsonify({"f1": d.get('f_bmb'), "f2": d.get('f_fachada')})
 @app.route('/logout')
 def logout(): session.clear(); return redirect('/login')
 
