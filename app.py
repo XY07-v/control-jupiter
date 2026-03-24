@@ -26,15 +26,16 @@ CSS_BI = """
     .nav-link { display: block; color: #D8F3DC; text-decoration: none; padding: 15px; border-radius: 12px; margin-bottom: 8px; cursor: pointer; border: none; background: transparent; width: 100%; text-align: left; font-size: 16px; }
     .nav-link:hover { background: var(--primary); }
     .modal-box { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 95%; max-width: 850px; z-index: 3000; background: #1B4332; border-radius: 24px; padding: 30px; border: 1px solid var(--accent); max-height: 90vh; overflow-y: auto; box-shadow: 0 0 50px rgba(0,0,0,0.9); }
-    .modal-mini { max-width: 400px; z-index: 4000; border: 2px solid var(--accent); }
+    .modal-mini { max-width: 450px; z-index: 4000; border: 2px solid var(--accent); }
     .card { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border-radius: 24px; padding: 25px; border: 1px solid rgba(255,255,255,0.1); width: 100%; box-sizing: border-box; }
     .btn { width: 100%; padding: 12px; border-radius: 10px; font-weight: 700; cursor: pointer; border: none; transition: 0.2s; font-size: 14px; margin-top: 10px; text-align: center; display: block; box-sizing: border-box; text-decoration: none; }
     .btn-primary { background: var(--accent); color: white; }
     .btn-gray { background: #495057; color: white; }
     .btn-logout { background: #BC4749; color: white; }
     input, select, textarea { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid var(--accent); border-radius: 8px; background: rgba(0,0,0,0.3); color: white; box-sizing: border-box; }
-    table { width: 100%; border-collapse: collapse; margin-top: 15px; color: white; font-size: 14px; }
-    th, td { text-align: left; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; color: white; font-size: 13px; }
+    th { background: rgba(0,0,0,0.3); position: sticky; top: 0; }
+    th, td { text-align: left; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); white-space: nowrap; }
     .footer-text { text-align: center; padding: 20px; font-size: 11px; color: rgba(255,255,255,0.4); margin-top: auto; }
 </style>
 """
@@ -62,7 +63,7 @@ def index():
     <body>
         <div id="overlay" class="overlay" onclick="closeAll()"></div>
         <div id="sidebar" class="sidebar">
-            <h3 style="color:#B7E4C7; text-align:center;">Desarrollo de Andres Vanegas - Inteligencia de Negocio. Derechos Reservados.</h3>
+            <h3 style="color:#B7E4C7; text-align:center;">Desarrollo de Andres Vanegas - Inteligencia de Negocio</h3>
             <a href="/formulario" class="nav-link">Nuevo Reporte</a>
             <div class="nav-link" onclick="openModal('modal_puntos')">Gestión de Puntos</div>
             <a href="/descargar" class="nav-link">Reporte Excel</a>
@@ -76,9 +77,9 @@ def index():
             <div id="lista">{rows}</div>
         </div>
         <div id="modal_detalle" class="modal-box"><div id="det_body"></div><button onclick="closeAll()" class="btn btn-gray">REGRESAR (ESC)</button></div>
-        <div id="modal_puntos" class="modal-box"><h3>📍 Gestión de Puntos</h3><input type="text" id="f_pv" placeholder="Filtrar..." onkeyup="filtrarPuntos()"><div style="overflow-x:auto;"><table><thead><tr><th>Punto</th><th>BMB</th><th>Acción</th></tr></thead><tbody id="puntos_table"></tbody></table></div><button onclick="closeAll()" class="btn btn-gray">REGRESAR (ESC)</button></div>
+        <div id="modal_puntos" class="modal-box"><h3>📍 Gestión de Puntos</h3><input type="text" id="f_pv" placeholder="Filtrar por cualquier campo..." onkeyup="filtrarPuntos()"><div style="overflow-x:auto;"><table id="table_main_puntos"><thead></thead><tbody id="puntos_table"></tbody></table></div><button onclick="closeAll()" class="btn btn-gray">REGRESAR (ESC)</button></div>
         <div id="modal_usuarios" class="modal-box"><h3>👥 Usuarios</h3><div style="overflow-x:auto;"><table><thead><tr><th>Nombre</th><th>Usuario</th><th>Acción</th></tr></thead><tbody id="user_table"></tbody></table></div><button onclick="closeAll()" class="btn btn-gray">REGRESAR (ESC)</button></div>
-        <div id="modal_edit_punto" class="modal-box modal-mini"><h3>Editar Punto</h3><input type="hidden" id="ep_id"><label>Nombre</label><input type="text" id="ep_nombre"><label>BMB</label><input type="text" id="ep_bmb"><button class="btn btn-primary" onclick="actualizarPunto()">Guardar</button><button onclick="document.getElementById('modal_edit_punto').style.display='none'" class="btn btn-gray">Cancelar</button></div>
+        <div id="modal_edit_punto" class="modal-box modal-mini"></div>
         <div id="modal_edit_user" class="modal-box modal-mini"><h3>Editar Usuario</h3><input type="hidden" id="eu_id"><label>Nombre</label><input type="text" id="eu_nombre"><label>Usuario</label><input type="text" id="eu_user"><label>Pass</label><input type="password" id="eu_pass"><label>Rol</label><select id="eu_rol"><option value="admin">Admin</option><option value="asesor">Asesor</option></select><button class="btn btn-primary" onclick="actualizarUsuario()">Guardar</button><button onclick="document.getElementById('modal_edit_user').style.display='none'" class="btn btn-gray">Cancelar</button></div>
         <div id="modal_csv" class="modal-box"><h3>⚙️ Carga Masiva</h3><input type="file" id="fileCsv" accept=".csv"><button onclick="subirCsv()" class="btn btn-primary">Procesar</button><button onclick="closeAll()" class="btn btn-gray">REGRESAR (ESC)</button></div>
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -87,11 +88,47 @@ def index():
             function toggleMenu() {{ document.getElementById('sidebar').classList.toggle('active'); document.getElementById('overlay').style.display = document.getElementById('sidebar').classList.contains('active') ? 'block' : 'none'; }}
             function openModal(id) {{ closeAll(); document.getElementById('overlay').style.display='block'; document.getElementById(id).style.display='block'; if(id==='modal_puntos') cargarPuntos(); if(id==='modal_usuarios') cargarUsuarios(); }}
             function closeAll() {{ document.querySelectorAll('.modal-box').forEach(m => m.style.display='none'); document.getElementById('sidebar').classList.remove('active'); document.getElementById('overlay').style.display='none'; }}
+            
             async function cargarPuntos() {{ const res = await fetch('/api/puntos'); const puntos = await res.json(); window.allPuntos = puntos; renderPuntos(puntos); }}
-            function renderPuntos(lista) {{ document.getElementById('puntos_table').innerHTML = lista.map(p => `<tr><td>${{p['Punto de Venta']}}</td><td>${{p['BMB']}}</td><td><button onclick='abrirPopPunto(${{JSON.stringify(p)}})' style='color:#B7E4C7; background:none; border:none; cursor:pointer;'>EDITAR</button></td></tr>`).join(''); }}
-            function filtrarPuntos() {{ const f = document.getElementById('f_pv').value.toLowerCase(); renderPuntos(window.allPuntos.filter(p => p['Punto de Venta'].toLowerCase().includes(f))); }}
-            function abrirPopPunto(p) {{ document.getElementById('ep_id').value=p._id; document.getElementById('ep_nombre').value=p['Punto de Venta']; document.getElementById('ep_bmb').value=p['BMB']; document.getElementById('modal_edit_punto').style.display='block'; }}
-            async function actualizarPunto() {{ await fetch('/api/actualizar_punto', {{ method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{id:document.getElementById('ep_id').value, nom:document.getElementById('ep_nombre').value, bmb:document.getElementById('ep_bmb').value}}) }}); document.getElementById('modal_edit_punto').style.display='none'; cargarPuntos(); }}
+            
+            function renderPuntos(lista) {{ 
+                if(!lista || lista.length === 0) return;
+                const columnas = Object.keys(lista[0]).filter(k => k !== '_id');
+                const thead = document.querySelector('#table_main_puntos thead');
+                thead.innerHTML = '<tr>' + columnas.map(c => `<th>${{c}}</th>`).join('') + '<th>Acción</th></tr>';
+                
+                document.getElementById('puntos_table').innerHTML = lista.map(p => `<tr>${{columnas.map(c => `<td>${{p[c] || ''}}</td>`).join('')}}<td><button onclick='abrirPopPunto(${{JSON.stringify(p)}})' style='color:#B7E4C7; background:none; border:none; cursor:pointer; font-weight:bold;'>EDITAR</button></td></tr>`).join(''); 
+            }}
+            
+            function filtrarPuntos() {{ 
+                const f = document.getElementById('f_pv').value.toLowerCase(); 
+                const filtrados = window.allPuntos.filter(p => Object.values(p).some(val => String(val).toLowerCase().includes(f)));
+                renderPuntos(filtrados); 
+            }}
+            
+            function abrirPopPunto(p) {{ 
+                const container = document.getElementById('modal_edit_punto');
+                const columnas = Object.keys(p).filter(k => k !== '_id');
+                let html = `<h3>Editar Punto de Venta</h3><input type="hidden" id="ep_id" value="${{p._id}}">`;
+                columnas.forEach(col => {{
+                    html += `<label style="font-size:12px; color:#B7E4C7;">${{col}}</label><input type="text" class="edit-field" data-key="${{col}}" value="${{p[col] || ''}}">`;
+                }});
+                html += `<button class="btn btn-primary" onclick="actualizarPunto()">Guardar Cambios</button><button onclick="document.getElementById('modal_edit_punto').style.display='none'" class="btn btn-gray">Cancelar</button>`;
+                container.innerHTML = html;
+                container.style.display = 'block'; 
+            }}
+            
+            async function actualizarPunto() {{ 
+                const id = document.getElementById('ep_id').value;
+                const campos = {{}};
+                document.querySelectorAll('.edit-field').forEach(input => {{
+                    campos[input.getAttribute('data-key')] = input.value;
+                }});
+                await fetch('/api/actualizar_punto', {{ method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{id: id, datos: campos}}) }}); 
+                document.getElementById('modal_edit_punto').style.display='none'; 
+                cargarPuntos(); 
+            }}
+
             async function cargarUsuarios() {{ const res = await fetch('/api/usuarios'); const users = await res.json(); document.getElementById('user_table').innerHTML = users.map(u => `<tr><td>${{u.nombre_completo}}</td><td>${{u.usuario}}</td><td><button onclick='abrirPopUser(${{JSON.stringify(u)}})' style='color:#B7E4C7; background:none; border:none; cursor:pointer;'>EDITAR</button></td></tr>`).join(''); }}
             function abrirPopUser(u) {{ document.getElementById('eu_id').value=u._id; document.getElementById('eu_nombre').value=u.nombre_completo; document.getElementById('eu_user').value=u.usuario; document.getElementById('eu_pass').value=u.password; document.getElementById('eu_rol').value=u.rol; document.getElementById('modal_edit_user').style.display='block'; }}
             async function actualizarUsuario() {{ const d = {{ id:document.getElementById('eu_id').value, nom:document.getElementById('eu_nombre').value, usr:document.getElementById('eu_user').value, pas:document.getElementById('eu_pass').value, rol:document.getElementById('eu_rol').value }}; await fetch('/api/actualizar_usuario', {{ method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify(d) }}); document.getElementById('modal_edit_user').style.display='none'; cargarUsuarios(); }}
@@ -113,7 +150,7 @@ def formulario():
         visitas_col.insert_one({"pv": request.form.get('pv'), "n_documento": session['user_name'], "fecha": f_val, "mes": f_val[:7], "bmb": request.form.get('bmb'), "motivo": request.form.get('motivo'), "ubicacion": request.form.get('ubicacion'), "Nota": request.form.get('nota'), "f_bmb": b64(request.files.get('f1')), "f_fachada": b64(request.files.get('f2'))})
         return redirect('/formulario?msg=OK')
     puntos = list(puntos_col.find({}, {"Punto de Venta": 1, "BMB": 1}))
-    options = "".join([f'<option value="{p["Punto de Venta"]}" data-bmb="{p.get("BMB","")}"> ' for p in puntos])
+    options = "".join([f'<option value="{p.get("Punto de Venta","")}" data-bmb="{p.get("BMB","")}"> ' for p in puntos])
     return render_template_string(f"""
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">{CSS_BI}</head>
     <body onload="getGPS()" style="display:flex; justify-content:center; align-items:center; padding:20px;">
@@ -148,7 +185,8 @@ def carga():
         d = ';' if content.count(';') > content.count(',') else ','
         reader = csv.DictReader(io.StringIO(content), delimiter=d)
         lista = [{k.strip(): v.strip() for k, v in r.items() if k} for r in reader]
-        puntos_col.delete_many({}); puntos_col.insert_many(lista)
+        if lista:
+            puntos_col.delete_many({}); puntos_col.insert_many(lista)
         return jsonify({"count": len(lista)})
     return jsonify({"error": "No file"}), 400
 
@@ -156,8 +194,13 @@ def carga():
 def api_puntos(): p = list(puntos_col.find()); [x.update({"_id": str(x["_id"])}) for x in p]; return jsonify(p)
 @app.route('/api/usuarios')
 def api_users(): u = list(usuarios_col.find()); [x.update({"_id": str(x["_id"])}) for x in u]; return jsonify(u)
+
 @app.route('/api/actualizar_punto', methods=['POST'])
-def up_p(): d = request.json; puntos_col.update_one({"_id": ObjectId(d['id'])}, {"$set": {"Punto de Venta": d['nom'], "BMB": d['bmb']}}); return jsonify({"s": "ok"})
+def up_p(): 
+    d = request.json
+    puntos_col.update_one({"_id": ObjectId(d['id'])}, {"$set": d['datos']})
+    return jsonify({"s": "ok"})
+
 @app.route('/api/actualizar_usuario', methods=['POST'])
 def up_u(): d = request.json; usuarios_col.update_one({"_id": ObjectId(d['id'])}, {"$set": {"nombre_completo": d['nom'], "usuario": d['usr'], "password": d['pas'], "rol": d['rol']}}); return jsonify({"s": "ok"})
 @app.route('/descargar')
