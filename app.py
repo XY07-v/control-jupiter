@@ -15,7 +15,7 @@ visitas_col = db['visitas']
 usuarios_col = db['usuarios']
 puntos_col = db['puntos_venta']
 
-# --- CSS (Mantenido Original) ---
+# --- CSS ORIGINAL MANTENIDO ---
 CSS_BI = """
 <style>
     :root { --primary: #1B4332; --dark: #081C15; --accent: #40916C; --bg: #081C15; }
@@ -26,16 +26,20 @@ CSS_BI = """
     .nav-link { display: block; color: #D8F3DC; text-decoration: none; padding: 15px; border-radius: 12px; margin-bottom: 8px; cursor: pointer; border: none; background: transparent; width: 100%; text-align: left; font-size: 16px; }
     .nav-link:hover { background: var(--primary); }
     .modal-box { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 95%; max-width: 850px; z-index: 3000; background: #1B4332; border-radius: 24px; padding: 30px; border: 1px solid var(--accent); max-height: 90vh; overflow-y: auto; box-shadow: 0 0 50px rgba(0,0,0,0.9); }
+    .modal-mini { max-width: 450px; z-index: 4000; border: 2px solid var(--accent); }
     .card { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border-radius: 24px; padding: 25px; border: 1px solid rgba(255,255,255,0.1); width: 100%; box-sizing: border-box; }
     .btn { width: 100%; padding: 12px; border-radius: 10px; font-weight: 700; cursor: pointer; border: none; transition: 0.2s; font-size: 14px; margin-top: 10px; text-align: center; display: block; box-sizing: border-box; text-decoration: none; }
     .btn-primary { background: var(--accent); color: white; }
     .btn-gray { background: #495057; color: white; }
+    .btn-logout { background: #BC4749; color: white; }
     input, select, textarea { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid var(--accent); border-radius: 8px; background: rgba(0,0,0,0.3); color: white; box-sizing: border-box; }
     table { width: 100%; border-collapse: collapse; margin-top: 15px; color: white; font-size: 13px; }
-    th, td { text-align: left; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    th { background: rgba(0,0,0,0.3); position: sticky; top: 0; }
+    th, td { text-align: left; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); white-space: nowrap; }
+    .footer-text { text-align: center; padding: 20px; font-size: 11px; color: rgba(255,255,255,0.4); margin-top: auto; }
 </style>
 """
-FOOTER_HTML = '<div class="footer-text">Desarrollo de Andres Vanegas - Inteligencia de Negocio.</div>'
+FOOTER_HTML = '<div class="footer-text">Desarrollo de Andres Vanegas - Inteligencia de Negocio. Derechos Reservados.</div>'
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -59,7 +63,7 @@ def index():
     <body>
         <div id="overlay" class="overlay" onclick="closeAll()"></div>
         <div id="sidebar" class="sidebar">
-            <h3 style="color:#B7E4C7; text-align:center;">MENU ADMIN</h3>
+            <h3 style="color:#B7E4C7; text-align:center;">Gestión BI</h3>
             <a href="/formulario" class="nav-link">Nuevo Reporte</a>
             <a href="/validacion_bmb" class="nav-link" style="color:#FFD97D;">Validación BMB 📋</a>
             <div class="nav-link" onclick="openModal('modal_puntos')">Gestión de Puntos</div>
@@ -74,67 +78,124 @@ def index():
             <div id="lista">{rows}</div>
         </div>
         <div id="modal_detalle" class="modal-box"><div id="det_body"></div><button onclick="closeAll()" class="btn btn-gray">REGRESAR (ESC)</button></div>
-        <div id="modal_puntos" class="modal-box"><h3>📍 Gestión de Puntos</h3><input type="text" id="f_pv" placeholder="Filtrar... " onkeyup="filtrarPuntos()"><div style="overflow-x:auto;"><table id="table_main_puntos"><thead></thead><tbody id="puntos_table"></tbody></table></div><button onclick="closeAll()" class="btn btn-gray">REGRESAR</button></div>
-        <div id="modal_usuarios" class="modal-box"><h3>👥 Usuarios</h3><div style="overflow-x:auto;"><table><tbody id="user_table"></tbody></table></div><button onclick="closeAll()" class="btn btn-gray">REGRESAR</button></div>
+        <div id="modal_puntos" class="modal-box"><h3>📍 Gestión de Puntos</h3><input type="text" id="f_pv" placeholder="Filtrar por cualquier campo..." onkeyup="filtrarPuntos()"><div style="overflow-x:auto;"><table id="table_main_puntos"><thead></thead><tbody id="puntos_table"></tbody></table></div><button onclick="closeAll()" class="btn btn-gray">REGRESAR (ESC)</button></div>
+        <div id="modal_usuarios" class="modal-box"><h3>👥 Usuarios</h3><div style="overflow-x:auto;"><table><thead><tr><th>Nombre</th><th>Usuario</th><th>Acción</th></tr></thead><tbody id="user_table"></tbody></table></div><button onclick="closeAll()" class="btn btn-gray">REGRESAR (ESC)</button></div>
         <div id="modal_edit_punto" class="modal-box modal-mini"></div>
-        <div id="modal_csv" class="modal-box"><h3>⚙️ Carga Masiva</h3><input type="file" id="fileCsv" accept=".csv"><button onclick="subirCsv()" class="btn btn-primary">Procesar</button></div>
+        <div id="modal_csv" class="modal-box"><h3>⚙️ Carga Masiva</h3><input type="file" id="fileCsv" accept=".csv"><button onclick="subirCsv()" class="btn btn-primary">Procesar</button><button onclick="closeAll()" class="btn btn-gray">REGRESAR (ESC)</button></div>
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
         <script>
+            document.addEventListener('keydown', (e) => {{ if(e.key === "Escape") closeAll(); }});
             function toggleMenu() {{ document.getElementById('sidebar').classList.toggle('active'); document.getElementById('overlay').style.display = document.getElementById('sidebar').classList.contains('active') ? 'block' : 'none'; }}
             function openModal(id) {{ closeAll(); document.getElementById('overlay').style.display='block'; document.getElementById(id).style.display='block'; if(id==='modal_puntos') cargarPuntos(); if(id==='modal_usuarios') cargarUsuarios(); }}
             function closeAll() {{ document.querySelectorAll('.modal-box').forEach(m => m.style.display='none'); document.getElementById('sidebar').classList.remove('active'); document.getElementById('overlay').style.display='none'; }}
-            async function cargarPuntos() {{ const res = await fetch('/api/puntos'); const puntos = await res.json(); renderPuntos(puntos); }}
-            function renderPuntos(lista) {{ if(!lista.length) return; const cols = Object.keys(lista[0]).filter(k => k !== '_id'); document.getElementById('puntos_table').innerHTML = lista.map(p => `<tr>${{cols.map(c => `<td>${{p[c]||''}}</td>`).join('')}}</tr>`).join(''); }}
-            function verDetalle(id, pv, f, doc, mot, gps, bmb, nota) {{ document.getElementById('det_body').innerHTML = `<h3>${{pv}}</h3><p>BMB: ${{bmb}}</p><button class="btn btn-primary" onclick="loadM('${{id}}','${{gps}}')">Ver Evidencia</button><div id="map" style="height:200px; display:none;"></div><img id="im1" style="width:100%; display:none;"><img id="im2" style="width:100%; display:none;">`; openModal('modal_detalle'); }}
-            async function loadM(id, gps) {{ const res = await fetch('/get_img/'+id); const d = await res.json(); document.getElementById('im1').src=d.f1; document.getElementById('im1').style.display='block'; document.getElementById('im2').src=d.f2; document.getElementById('im2').style.display='block'; }}
+            
+            async function cargarPuntos() {{ const res = await fetch('/api/puntos'); const puntos = await res.json(); window.allPuntos = puntos; renderPuntos(puntos); }}
+            function renderPuntos(lista) {{ 
+                if(!lista || lista.length === 0) return;
+                const columnas = Object.keys(lista[0]).filter(k => k !== '_id');
+                const thead = document.querySelector('#table_main_puntos thead');
+                thead.innerHTML = '<tr>' + columnas.map(c => `<th>${{c}}</th>`).join('') + '<th>Acción</th></tr>';
+                document.getElementById('puntos_table').innerHTML = lista.map(p => `<tr>${{columnas.map(c => `<td>${{p[c] || ''}}</td>`).join('')}}<td><button onclick='abrirPopPunto(${{JSON.stringify(p)}})' style='color:#B7E4C7; background:none; border:none; cursor:pointer; font-weight:bold;'>EDITAR</button></td></tr>`).join(''); 
+            }}
+            function filtrarPuntos() {{ 
+                const f = document.getElementById('f_pv').value.toLowerCase(); 
+                const filtrados = window.allPuntos.filter(p => Object.values(p).some(val => String(val).toLowerCase().includes(f)));
+                renderPuntos(filtrados); 
+            }}
+            function abrirPopPunto(p) {{ 
+                const container = document.getElementById('modal_edit_punto');
+                const columnas = Object.keys(p).filter(k => k !== '_id');
+                let html = `<h3>Editar Punto de Venta</h3><input type="hidden" id="ep_id" value="${{p._id}}">`;
+                columnas.forEach(col => {{ html += `<label style="font-size:12px; color:#B7E4C7;">${{col}}</label><input type="text" class="edit-field" data-key="${{col}}" value="${{p[col] || ''}}">`; }});
+                html += `<button class="btn btn-primary" onclick="actualizarPunto()">Guardar Cambios</button><button onclick="document.getElementById('modal_edit_punto').style.display='none'" class="btn btn-gray">Cancelar</button>`;
+                container.innerHTML = html; container.style.display = 'block'; 
+            }}
+            async function actualizarPunto() {{ 
+                const id = document.getElementById('ep_id').value;
+                const campos = {{}};
+                document.querySelectorAll('.edit-field').forEach(input => {{ campos[input.getAttribute('data-key')] = input.value; }});
+                await fetch('/api/actualizar_punto', {{ method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{id: id, datos: campos}}) }}); 
+                document.getElementById('modal_edit_punto').style.display='none'; cargarPuntos(); 
+            }}
+            async function cargarUsuarios() {{ const res = await fetch('/api/usuarios'); const users = await res.json(); document.getElementById('user_table').innerHTML = users.map(u => `<tr><td>${{u.nombre_completo}}</td><td>${{u.usuario}}</td><td><button onclick='abrirPopUser(${{JSON.stringify(u)}})' style='color:#B7E4C7; background:none; border:none; cursor:pointer;'>EDITAR</button></td></tr>`).join(''); }}
+            function verDetalle(id, pv, f, doc, mot, gps, bmb, nota) {{ 
+                document.getElementById('det_body').innerHTML = `<h3>${{pv}}</h3><p>BMB: ${{bmb}}<br>Asesor: ${{doc}}<br>Nota: ${{nota}}</p><button id="ld_b" class="btn btn-primary" onclick="loadM('${{id}}','${{gps}}')">Ver Evidencia y Mapa</button><div id="map" style="height:300px; border-radius:15px; margin-top:15px; display:none;"></div><img id="im1" style="width:100%; border-radius:10px; margin-top:10px; display:none;"><img id="im2" style="width:100%; border-radius:10px; margin-top:10px; display:none;">`; 
+                openModal('modal_detalle'); 
+            }}
+            async function loadM(id, gps) {{ 
+                const res = await fetch('/get_img/'+id); const d = await res.json(); 
+                if(d.f1) {{ document.getElementById('im1').src=d.f1; document.getElementById('im1').style.display='block'; }}
+                if(d.f2) {{ document.getElementById('im2').src=d.f2; document.getElementById('im2').style.display='block'; }}
+                if(gps) {{ 
+                    document.getElementById('map').style.display='block'; 
+                    setTimeout(() => {{
+                        const coords = gps.split(',').map(Number);
+                        const map = L.map('map').setView(coords, 16);
+                        L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png').addTo(map);
+                        L.marker(coords).addTo(map);
+                    }}, 200);
+                }}
+                document.getElementById('ld_b').style.display='none'; 
+            }}
         </script>
+        {FOOTER_HTML}
     </body></html>
     """)
 
 @app.route('/formulario', methods=['GET', 'POST'])
 def formulario():
     if 'user_id' not in session: return redirect('/login')
+    msg_ok = request.args.get('msg') == 'OK'
     if request.method == 'POST':
         def b64(f): return f"data:{f.content_type};base64,{base64.b64encode(f.read()).decode()}" if f else ""
         pv = request.form.get('pv')
         bmb_input = request.form.get('bmb')
-        punto_db = puntos_col.find_one({"Punto de Venta": pv})
-        bmb_actual = punto_db.get('BMB') if punto_db else ""
+        f_val = request.form.get('fecha')
         
-        # Si el BMB es diferente al de la base, marcamos como pendiente
-        es_edicion = bmb_input != bmb_actual
+        # VALIDACIÓN BMB: Consultamos el actual en la base
+        punto_db = puntos_col.find_one({"Punto de Venta": pv})
+        bmb_actual_db = punto_db.get('BMB') if punto_db else ""
+        es_pendiente = bmb_input != bmb_actual_db
 
         visitas_col.insert_one({
-            "pv": pv, "n_documento": session['user_name'], "fecha": request.form.get('fecha'),
-            "bmb": bmb_actual, 
-            "bmb_propuesto": bmb_input,
-            "bmb_pendiente": es_edicion,
+            "pv": pv, "n_documento": session['user_name'], "fecha": f_val, "mes": f_val[:7], 
+            "bmb": bmb_actual_db, # Guardamos el que estaba
+            "bmb_propuesto": bmb_input, # El que el asesor sugiere
+            "bmb_pendiente": es_pendiente,
             "motivo": request.form.get('motivo'), "ubicacion": request.form.get('ubicacion'), 
-            "Nota": request.form.get('nota'), 
-            "f_bmb": b64(request.files.get('f1')), "f_fachada": b64(request.files.get('f2'))
+            "Nota": request.form.get('nota'), "f_bmb": b64(request.files.get('f1')), "f_fachada": b64(request.files.get('f2'))
         })
         return redirect('/formulario?msg=OK')
-    
+        
     puntos = list(puntos_col.find({}, {"Punto de Venta": 1, "BMB": 1}))
-    options = "".join([f'<option value="{p["Punto de Venta"]}" data-bmb="{p.get("BMB","")}"> ' for p in puntos])
+    options = "".join([f'<option value="{p.get("Punto de Venta","")}" data-bmb="{p.get("BMB","")}"> ' for p in puntos])
     return render_template_string(f"""
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">{CSS_BI}</head>
     <body onload="getGPS()" style="display:flex; justify-content:center; align-items:center; padding:20px;">
+        <div id="over" class="overlay" style="display:{'block' if msg_ok else 'none'};" onclick="location.href='/formulario'"></div>
+        <div class="modal-box" style="display:{'block' if msg_ok else 'none'}; text-align:center; max-width:350px;"><h1>✅</h1><h2>¡Éxito!</h2><button onclick="location.href='/formulario'" class="btn btn-primary">Aceptar</button></div>
         <div class="card" style="max-width:480px;">
-            <h2 style="text-align:center;">NUEVA VISITA</h2>
+            <p style="text-align:center; color:#B7E4C7; margin:0;">Bienvenido, <b>{session['user_name']}</b></p>
+            <h2 style="text-align:center; margin-top:5px;">NUEVA VISITA</h2>
             <form method="POST" enctype="multipart/form-data">
                 <label>Punto</label><input list="p" name="pv" id="pv_i" onchange="upBMB()" required><datalist id="p">{options}</datalist>
-                <label>BMB (Editable para corregir)</label><input type="text" name="bmb" id="bmb_i">
-                <label>Motivo</label><select name="motivo"><option>Visita Exitosa</option><option>Punto Cerrado</option></select>
+                <label>BMB (Corregir si es necesario)</label><input type="text" name="bmb" id="bmb_i">
                 <label>Fecha</label><input type="date" name="fecha" value="{datetime.now().strftime('%Y-%m-%d')}">
-                <label>Foto Evidencia BMB</label><input type="file" name="f1" accept="image/*" capture="camera" required>
+                <label>Motivo</label><select name="motivo"><option>Visita Exitosa</option><option>Máquina Retirada</option><option>Punto Cerrado</option></select>
+                <label>Nota</label><textarea name="nota" rows="2"></textarea>
+                <label>Foto BMB</label><input type="file" name="f1" accept="image/*" capture="camera" required>
                 <label>Foto Fachada</label><input type="file" name="f2" accept="image/*" capture="camera" required>
                 <input type="hidden" name="ubicacion" id="g"><button class="btn btn-primary">GUARDAR</button>
+                {f'<a href="/" class="btn btn-gray">VOLVER</a>' if session['role']=='admin' else ''}<a href="/logout" class="btn btn-logout">CERRAR SESIÓN</a>
             </form>
         </div>
         <script>
             function getGPS(){{navigator.geolocation.getCurrentPosition(p=>document.getElementById('g').value=p.coords.latitude+','+p.coords.longitude);}}
-            function upBMB() {{ const v=document.getElementById('pv_i').value; const o=Array.from(document.getElementById('p').options).find(x=>x.value===v); if(o) document.getElementById('bmb_i').value=o.dataset.bmb; }}
+            function upBMB() {{ 
+                const v = document.getElementById('pv_i').value; 
+                const o = Array.from(document.getElementById('p').options).find(x => x.value === v);
+                if(o) document.getElementById('bmb_i').value = o.getAttribute('data-bmb'); 
+            }}
         </script>
     </body></html>
     """)
@@ -144,34 +205,47 @@ def validacion_bmb():
     if 'user_id' not in session or session['role'] != 'admin': return redirect('/')
     pends = list(visitas_col.find({"bmb_pendiente": True}))
     rows = "".join([f"""
-        <div class='card' style='margin-bottom:15px;'>
+        <div class='card' style='margin-bottom:15px; border-left: 5px solid #FFD97D;'>
             <h3>{r['pv']}</h3>
-            <p>BMB Actual: <b>{r['bmb']}</b> -> Propuesto: <b style='color:#95D5B2;'>{r['bmb_propuesto']}</b></p>
+            <p>BMB Base: <b style='color:#FFB3B3;'>{r['bmb']}</b> -> Propuesto: <b style='color:#95D5B2;'>{r['bmb_propuesto']}</b></p>
             <div style='display:flex; gap:10px;'>
                 <img src='{r['f_bmb']}' style='width:50%; border-radius:10px;'>
                 <img src='{r['f_fachada']}' style='width:50%; border-radius:10px;'>
             </div>
-            <button class='btn btn-primary' onclick="aprobar('{r['_id']}')">APROBAR CAMBIO</button>
-            <button class='btn btn-gray' onclick="rechazar('{r['_id']}')">RECHAZAR</button>
+            <div style='display:flex; gap:10px;'>
+                <button class='btn btn-primary' onclick="accBmb('{r['_id']}', 'aprobar')">APROBAR</button>
+                <button class='btn btn-gray' onclick="accBmb('{r['_id']}', 'rechazar')">RECHAZAR</button>
+            </div>
         </div>
     """ for r in pends])
-    return render_template_string(f"<html><head>{CSS_BI}</head><body><div style='padding:20px;'><h2>Solicitudes de Cambio BMB</h2>{rows or '<p>No hay pendientes</p>'}<br><a href='/' class='btn btn-gray'>Volver</a></div><script>async function aprobar(id){{ await fetch('/api/aprobar_bmb/'+id); location.reload(); }} async function rechazar(id){{ await fetch('/api/rechazar_bmb/'+id); location.reload(); }}</script></body></html>")
+    return render_template_string(f"""
+    <html><head>{CSS_BI}</head><body><div style='padding:20px;'><h2>Validación de Cambios BMB</h2>{rows or '<p>No hay solicitudes pendientes.</p>'}<br><a href='/' class='btn btn-gray'>Volver</a></div>
+    <script>async function accBmb(id, op){{ await fetch('/api/bmb/'+id+'/'+op); location.reload(); }}</script></body></html>
+    """)
 
-@app.route('/api/aprobar_bmb/<id>')
-def api_aprobar_bmb(id):
-    v = visitas_col.find_one({"_id": ObjectId(id)})
-    puntos_col.update_one({"Punto de Venta": v['pv']}, {"$set": {"BMB": v['bmb_propuesto']}})
-    visitas_col.update_one({"_id": ObjectId(id)}, {"$set": {"bmb": v['bmb_propuesto'], "bmb_pendiente": False}})
+@app.route('/api/bmb/<id>/<op>')
+def api_bmb_action(id, op):
+    if op == 'aprobar':
+        v = visitas_col.find_one({"_id": ObjectId(id)})
+        puntos_col.update_one({"Punto de Venta": v['pv']}, {"$set": {"BMB": v['bmb_propuesto']}})
+        visitas_col.update_one({"_id": ObjectId(id)}, {"$set": {"bmb": v['bmb_propuesto'], "bmb_pendiente": False}})
+    else:
+        visitas_col.update_one({"_id": ObjectId(id)}, {"$set": {"bmb_pendiente": False}})
     return jsonify({"s": "ok"})
 
-@app.route('/api/rechazar_bmb/<id>')
-def api_rechazar_bmb(id):
-    visitas_col.update_one({"_id": ObjectId(id)}, {"$set": {"bmb_pendiente": False}})
-    return jsonify({"s": "ok"})
-
-# --- RUTAS DE GESTIÓN (Mantenidas de tu final2.1.py) ---
+# --- RUTAS ORIGINALES MANTENIDAS ---
 @app.route('/api/puntos')
 def api_puntos(): p = list(puntos_col.find()); [x.update({"_id": str(x["_id"])}) for x in p]; return jsonify(p)
+@app.route('/api/usuarios')
+def api_users(): u = list(usuarios_col.find()); [x.update({"_id": str(x["_id"])}) for x in u]; return jsonify(u)
+@app.route('/api/actualizar_punto', methods=['POST'])
+def up_p(): d = request.json; puntos_col.update_one({"_id": ObjectId(d['id'])}, {"$set": d['datos']}); return jsonify({"s": "ok"})
+@app.route('/descargar')
+def desc():
+    cursor = visitas_col.find({}, {"f_bmb": 0, "f_fachada": 0, "_id": 0})
+    si = io.StringIO(); w = csv.writer(si); w.writerow(['Punto', 'Asesor', 'Fecha', 'BMB', 'Motivo', 'Nota', 'GPS'])
+    for r in cursor: w.writerow([r.get('pv'), r.get('n_documento'), r.get('fecha'), r.get('bmb'), r.get('motivo'), r.get('Nota'), r.get('ubicacion')])
+    return Response(si.getvalue(), mimetype='text/csv', headers={"Content-Disposition":"attachment;filename=Reporte_BI.csv"})
 @app.route('/get_img/<id>')
 def get_img(id): d = visitas_col.find_one({"_id": ObjectId(id)}); return jsonify({"f1": d.get('f_bmb'), "f2": d.get('f_fachada')})
 @app.route('/logout')
