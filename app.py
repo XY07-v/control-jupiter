@@ -14,6 +14,7 @@ db = client['NestleDB']
 visitas_col = db['visitas']
 usuarios_col = db['usuarios']
 puntos_col = db['puntos_venta']
+auditoria_col = db['auditoria_bmb'] # Nueva colección para trazabilidad
 
 def calcular_distancia(pos1, pos2):
     if not pos1 or not pos2: return 0
@@ -159,13 +160,31 @@ def formulario():
         def b64(f): return f"data:{f.content_type};base64,{base64.b64encode(f.read()).decode()}" if f else ""
         pv, bmb_in, gps = request.form.get('pv'), request.form.get('bmb'), request.form.get('ubicacion')
         pnt = puntos_col.find_one({"Punto de Venta": pv})
-        bmb_orig = pnt.get('BMB') if pnt else ""; dist = calcular_distancia(gps, pnt.get('Ruta')) if pnt else 0
+        
+        bmb_orig = pnt.get('BMB') if pnt else ""
+        ruta_orig = pnt.get('Ruta') if pnt else ""
+        
+        # Validar si no tiene Ruta previa, tomar la actual como inicial
+        if not ruta_orig:
+            dist = 0
+            # Si no hay ruta previa, se aprueba automático para establecer la base
+            estado_v = "Pendiente" if (bmb_in != bmb_orig) else "Aprobado"
+        else:
+            dist = calcular_distancia(gps, ruta_orig)
+            # Validar cambio de BMB o si supera 100 metros
+            estado_v = "Pendiente" if (bmb_in != bmb_orig or dist > 100) else "Aprobado"
+            
         visitas_col.insert_one({
             "pv": pv, "n_documento": session['user_name'], "fecha": request.form.get('fecha'),
             "bmb": bmb_orig, "bmb_propuesto": bmb_in, "ubicacion": gps, "distancia": round(dist, 1),
-            "estado": "Pendiente" if (bmb_in != bmb_orig or dist > 100) else "Aprobado",
+            "estado": estado_v,
             "motivo": request.form.get('motivo'), "f_bmb": b64(request.files.get('f1')), "f_fachada": b64(request.files.get('f2'))
         })
+        
+        # Si fue aprobado automático (dist < 100 y mismo BMB), actualizar de todos modos la Ruta por si estaba vacía
+        if estado_v == "Aprobado":
+            puntos_col.update_one({"Punto de Venta": pv}, {"$set": {"BMB": bmb_in, "Ruta": gps}})
+            
         return redirect('/formulario?msg=OK')
     
     msg = '<div id="msg" style="background:#34C759; color:white; padding:15px; border-radius:15px; text-align:center; position:fixed; top:10px; left:50%; transform:translateX(-50%); z-index:5000; width:80%;">✓ Registro Exitoso</div><script>setTimeout(()=>document.getElementById("msg").remove(),4000)</script>' if request.args.get('msg') else ''
@@ -243,10 +262,27 @@ def desc():
 @app.route('/api/v_final/<id>/<op>')
 def api_v_f(id, op):
     v = visitas_col.find_one({"_id": ObjectId(id)})
+    if not v: return jsonify({"s":"error"})
+    
     if op == 'aprobar':
+        # Antes de actualizar, guardamos en auditoria_bmb para trazabilidad
+        pnt_actual = puntos_col.find_one({"Punto de Venta": v['pv']})
+        auditoria_col.insert_one({
+            "pv": v['pv'],
+            "usuario_admin": session.get('user_name'),
+            "fecha_auditoria": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "bmb_anterior": pnt_actual.get('BMB'),
+            "bmb_nuevo": v['bmb_propuesto'],
+            "ruta_anterior": pnt_actual.get('Ruta'),
+            "ruta_nueva": v['ubicacion'],
+            "distancia_gps": v.get('distancia')
+        })
+        
+        # Actualizamos el Punto de Venta con los datos finales
         puntos_col.update_one({"Punto de Venta": v['pv']}, {"$set": {"BMB": v['bmb_propuesto'], "Ruta": v['ubicacion']}})
         visitas_col.update_one({"_id": ObjectId(id)}, {"$set": {"estado": "Aprobado"}})
-    else: visitas_col.update_one({"_id": ObjectId(id)}, {"$set": {"estado": "Rechazado"}})
+    else:
+        visitas_col.update_one({"_id": ObjectId(id)}, {"$set": {"estado": "Rechazado"}})
     return jsonify({"s":"ok"})
 
 @app.route('/login', methods=['GET', 'POST'])
