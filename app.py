@@ -14,7 +14,7 @@ db = client['NestleDB']
 visitas_col = db['visitas']
 usuarios_col = db['usuarios']
 puntos_col = db['puntos_venta']
-auditoria_col = db['auditoria_bmb'] # Nueva colección para trazabilidad
+auditoria_col = db['auditoria_bmb']
 
 def calcular_distancia(pos1, pos2):
     if not pos1 or not pos2: return 0
@@ -87,23 +87,22 @@ def index():
                 if(id=='m_users') cargaU(); 
             }}
             function closeM() {{ document.querySelectorAll('.modal').forEach(m=>m.style.display='none'); }}
-
             async function cargaP() {{
                 const r = await fetch('/api/puntos'); pts_data = await r.json();
                 let h = '<button class="btn btn-light" onclick="closeM()" style="width:100px; float:right;">Cerrar</button><h3>Puntos</h3>';
-                h += '<input type="text" class="search-box" id="bus_p" style="width:100%; padding:10px; margin-bottom:10px; border-radius:10px; border:1px solid #ddd;" placeholder="Buscar punto..." onkeyup="filP()">';
+                h += '<input type="text" class="search-box" id="bus_p" placeholder="Buscar punto..." onkeyup="filP()">';
                 h += '<div id="tabla_p"></div>';
                 document.getElementById('cont_p_modal').innerHTML = h;
                 renderTablaP(pts_data);
             }}
             function renderTablaP(data) {{
-                let h = '<table><tr><th>Punto</th><th>Acción</th></tr>';
-                data.forEach(p => h += `<tr><td>${{p['Punto de Venta']}}</td><td><button class="btn btn-light" style="margin:0; padding:5px 10px;" onclick='editP(${{JSON.stringify(p)}})'>Editar</button></td></tr>`);
+                let h = '<table><tr><th>Punto</th><th>BMB</th><th>Acción</th></tr>';
+                data.forEach(p => h += `<tr><td>${{p['Punto de Venta']}}</td><td>${{p['BMB']||''}}</td><td><button class="btn btn-light" style="margin:0; padding:5px 10px;" onclick='editP(${{JSON.stringify(p)}})'>Editar</button></td></tr>`);
                 document.getElementById('tabla_p').innerHTML = h + '</table>';
             }}
             function filP() {{
                 const v = document.getElementById('bus_p').value.toLowerCase();
-                renderTablaP(pts_data.filter(p => p['Punto de Venta'].toLowerCase().includes(v)));
+                renderTablaP(pts_data.filter(p => p['Punto de Venta'].toLowerCase().includes(v) || (p['BMB']||'').toLowerCase().includes(v)));
             }}
             function editP(p) {{
                 let form = '<h3>Editar Punto</h3>';
@@ -116,7 +115,6 @@ def index():
                 await fetch('/api/actualizar_punto', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{id:id, datos:d}})}});
                 cargaP();
             }}
-
             async function cargaU() {{
                 const r = await fetch('/api/usuarios'); const us = await r.json();
                 let h = '<button class="btn btn-light" onclick="closeM()" style="width:100px; float:right;">Cerrar</button><h3>Usuarios</h3>';
@@ -158,37 +156,44 @@ def formulario():
     if 'user_id' not in session: return redirect('/login')
     if request.method == 'POST':
         def b64(f): return f"data:{f.content_type};base64,{base64.b64encode(f.read()).decode()}" if f else ""
-        pv, bmb_in, gps = request.form.get('pv'), request.form.get('bmb'), request.form.get('ubicacion')
-        pnt = puntos_col.find_one({"Punto de Venta": pv})
+        pv_in, bmb_in, gps = request.form.get('pv'), request.form.get('bmb'), request.form.get('ubicacion')
+        pnt = puntos_col.find_one({"Punto de Venta": pv_in})
         
-        bmb_orig = pnt.get('BMB') if pnt else ""
-        ruta_orig = pnt.get('Ruta') if pnt else ""
-        
-        # Validar si no tiene Ruta previa, tomar la actual como inicial
-        if not ruta_orig:
-            dist = 0
-            # Si no hay ruta previa, se aprueba automático para establecer la base
-            estado_v = "Pendiente" if (bmb_in != bmb_orig) else "Aprobado"
+        # Validación de BMB duplicado en otro punto para el Admin
+        bmb_duplicado = puntos_col.find_one({"BMB": bmb_in, "Punto de Venta": {"$ne": pv_in}})
+        duplicado_info = bmb_duplicado['Punto de Venta'] if bmb_duplicado else ""
+
+        if not pnt:
+            # Si el punto no existe, es creación nueva (Pendiente por defecto para validación)
+            visitas_col.insert_one({
+                "pv": pv_in, "n_documento": session['user_name'], "fecha": request.form.get('fecha'),
+                "bmb": "NUEVO PUNTO", "bmb_propuesto": bmb_in, "ubicacion": gps, 
+                "ruta_anterior": "", "distancia": 0, "estado": "Pendiente", "is_new": True,
+                "bmb_duplicado_en": duplicado_info,
+                "motivo": "Creación de Punto", "f_bmb": b64(request.files.get('f1')), "f_fachada": b64(request.files.get('f2'))
+            })
         else:
-            dist = calcular_distancia(gps, ruta_orig)
-            # Validar cambio de BMB o si supera 100 metros
-            estado_v = "Pendiente" if (bmb_in != bmb_orig or dist > 100) else "Aprobado"
+            bmb_orig = pnt.get('BMB')
+            ruta_orig = pnt.get('Ruta', "")
+            dist = calcular_distancia(gps, ruta_orig) if ruta_orig else 0
             
-        visitas_col.insert_one({
-            "pv": pv, "n_documento": session['user_name'], "fecha": request.form.get('fecha'),
-            "bmb": bmb_orig, "bmb_propuesto": bmb_in, "ubicacion": gps, 
-            "ruta_anterior": ruta_orig, "distancia": round(dist, 1),
-            "estado": estado_v,
-            "motivo": request.form.get('motivo'), "f_bmb": b64(request.files.get('f1')), "f_fachada": b64(request.files.get('f2'))
-        })
-        
-        # Si fue aprobado automático, actualizar la Ruta base
-        if estado_v == "Aprobado":
-            puntos_col.update_one({"Punto de Venta": pv}, {"$set": {"BMB": bmb_in, "Ruta": gps}})
+            # Si cambia BMB, o cambia nombre de punto, o distancia > 100m -> Pendiente
+            # Nota: El Asesor escribe el nombre del punto en el input; si no coincide exacto se trata como nuevo o cambio
+            estado_v = "Pendiente" if (bmb_in != bmb_orig or dist > 100 or duplicado_info) else "Aprobado"
+            
+            visitas_col.insert_one({
+                "pv": pv_in, "n_documento": session['user_name'], "fecha": request.form.get('fecha'),
+                "bmb": bmb_orig, "bmb_propuesto": bmb_in, "ubicacion": gps, 
+                "ruta_anterior": ruta_orig, "distancia": round(dist, 1), "estado": estado_v,
+                "bmb_duplicado_en": duplicado_info,
+                "motivo": request.form.get('motivo'), "f_bmb": b64(request.files.get('f1')), "f_fachada": b64(request.files.get('f2'))
+            })
+            if estado_v == "Aprobado":
+                puntos_col.update_one({"Punto de Venta": pv_in}, {"$set": {"BMB": bmb_in, "Ruta": gps}})
             
         return redirect('/formulario?msg=OK')
     
-    msg = '<div id="msg" style="background:#34C759; color:white; padding:15px; border-radius:15px; text-align:center; position:fixed; top:10px; left:50%; transform:translateX(-50%); z-index:5000; width:80%;">✓ Registro Exitoso</div><script>setTimeout(()=>document.getElementById("msg").remove(),4000)</script>' if request.args.get('msg') else ''
+    msg = '<div id="msg" style="background:#34C759; color:white; padding:15px; border-radius:15px; text-align:center; position:fixed; top:10px; left:50%; transform:translateX(-50%); z-index:5000; width:80%;">✓ Reporte Enviado</div><script>setTimeout(()=>document.getElementById("msg").remove(),4000)</script>' if request.args.get('msg') else ''
     puntos = list(puntos_col.find({}, {"Punto de Venta": 1, "BMB": 1}))
     opts = "".join([f'<option value="{p["Punto de Venta"]}" data-bmb="{p.get("BMB","")}"> ' for p in puntos])
     
@@ -199,9 +204,10 @@ def formulario():
             {msg}
             <div class="card">
                 <h2 style="text-align:center; color:var(--ios-blue);">Nestlé BI</h2>
-                <p style="text-align:center;">Bienvenido, <b>{session['user_name']}</b></p>
+                <button class="btn btn-light" onclick="document.getElementById('m_guia').style.display='block'">🔍 Guía de Puntos/BMB</button>
                 <form method="POST" enctype="multipart/form-data">
-                    <input list="pts" name="pv" placeholder="Buscar Punto..." onchange="const o=document.querySelector('#pts option[value=\\''+this.value+'\\']'); if(o) document.getElementById('bmb_i').value=o.dataset.bmb;" required>
+                    <label style="font-size:11px; color:#8e8e93;">Punto de Venta (Escriba para nuevo o busque)</label>
+                    <input list="pts" name="pv" id="pv_i" placeholder="Nombre del Punto..." onchange="updateBMB(this.value)" required>
                     <datalist id="pts">{opts}</datalist>
                     <input type="text" name="bmb" id="bmb_i" placeholder="BMB Máquina" required>
                     <input type="date" name="fecha" value="{datetime.now().strftime('%Y-%m-%d')}">
@@ -213,8 +219,28 @@ def formulario():
                     <a href="/logout" class="btn btn-red">Cerrar Sesión</a>
                 </form>
             </div>
-            <p style="font-size:10px; text-align:center; color:#ccc;">Andres Vanegas &copy; 2026</p>
         </div>
+        <div id="m_guia" class="modal"><div class="modal-content">
+            <button class="btn btn-light" onclick="this.parentElement.parentElement.style.display='none'">Cerrar</button>
+            <h3>Guía de Consulta</h3>
+            <input type="text" id="bus_g" placeholder="Buscar por Punto o BMB..." onkeyup="filG()">
+            <div id="tabla_g" style="font-size:11px;"></div>
+        </div></div>
+        <script>
+            const data_pts = {puntos};
+            function updateBMB(val) {{
+                const p = data_pts.find(x => x['Punto de Venta'] === val);
+                if(p) document.getElementById('bmb_i').value = p.BMB || '';
+            }}
+            function filG() {{
+                const v = document.getElementById('bus_g').value.toLowerCase();
+                let h = '<table><tr><th>Punto</th><th>BMB</th></tr>';
+                data_pts.filter(p => p['Punto de Venta'].toLowerCase().includes(v) || (p['BMB']||'').toLowerCase().includes(v))
+                        .forEach(p => h += `<tr><td>${{p['Punto de Venta']}}</td><td>${{p['BMB']||''}}</td></tr>`);
+                document.getElementById('tabla_g').innerHTML = h + '</table>';
+            }}
+            filG();
+        </script>
     </body></html>
     """)
 
@@ -224,77 +250,49 @@ def validacion_admin():
     pends = list(visitas_col.find({"estado": "Pendiente"}))
     rows = ""
     for r in pends:
+        duplicado_msg = f'<p style="color:red; font-weight:bold; background:#ffebeb; padding:5px; border-radius:5px;">⚠️ ¡BMB DUPLICADO! Ya existe en: {r.get("bmb_duplicado_en")}</p>' if r.get('bmb_duplicado_en') else ''
+        tipo_punto = '<span style="color:green;">[NUEVO PUNTO]</span>' if r.get('is_new') else ''
         rows += f'''<div class="card" style="border-left: 8px solid #FF9500;">
-            <h3>{r['pv']}</h3>
+            <h3>{r['pv']} {tipo_punto}</h3>
+            {duplicado_msg}
             <p style="font-size:13px;"><b>Motivo:</b> {r.get('motivo')} | <b>Distancia:</b> {r.get('distancia')}m</p>
             <div style="background:#f2f2f7; padding:10px; border-radius:10px; font-size:12px; margin-bottom:10px;">
-                <b>BMB Actual:</b> {r.get('bmb')} <br>
+                <b>BMB Anterior:</b> {r.get('bmb')} <br>
                 <b style="color:var(--ios-blue);">BMB Propuesto:</b> {r.get('bmb_propuesto')}
             </div>
             <div style="display:flex; gap:10px; margin-bottom:10px;">
                 <img src="{r['f_bmb']}" style="width:50%; border-radius:10px;">
                 <img src="{r['f_fachada']}" style="width:50%; border-radius:10px;">
             </div>
-            <button class="btn btn-blue" onclick="vF('{r['_id']}', 'aprobar')">Aprobar Cambio</button>
+            <button class="btn btn-blue" onclick="vF('{r['_id']}', 'aprobar')">Aprobar</button>
             <button class="btn btn-light" style="color:red;" onclick="vF('{r['_id']}', 'rechazar')">Rechazar</button>
         </div>'''
     return render_template_string(f"<html><head><meta name='viewport' content='width=device-width, initial-scale=1.0'>{CSS_FIXED}</head><body><div class='sidebar'><a href='/' class='btn btn-light'>← Volver</a></div><div class='main-content'><h2>Validaciones</h2>{rows or '<p>No hay pendientes.</p>'}</div><script>async function vF(id,op){{await fetch('/api/v_final/'+id+'/'+op); location.reload();}}</script></body></html>")
-
-@app.route('/carga_masiva_puntos', methods=['POST'])
-def api_csv():
-    f = request.files.get('file_csv')
-    if f:
-        content = f.stream.read().decode("utf-8-sig", errors="ignore")
-        d = ';' if content.count(';') > content.count(',') else ','
-        reader = csv.DictReader(io.StringIO(content), delimiter=d)
-        lista = [{k.strip(): v.strip() for k, v in r.items() if k} for r in reader]
-        if lista: puntos_col.delete_many({}); puntos_col.insert_many(lista)
-        return jsonify({"count": len(lista)})
-    return jsonify({"error": "No file"}), 400
-
-@app.route('/descargar')
-def desc():
-    cursor = visitas_col.find({"estado": "Aprobado"}, {"f_bmb":0, "f_fachada":0, "_id":0})
-    si = io.StringIO(); w = csv.writer(si)
-    # Header con las columnas de Ruta y Distancia
-    w.writerow(['Punto', 'Asesor', 'Fecha', 'BMB Base', 'BMB Propuesto', 'Ruta Anterior', 'Ruta Nueva', 'Diferencia Metros', 'Estado'])
-    for r in cursor: 
-        w.writerow([
-            r.get('pv'), 
-            r.get('n_documento'), 
-            r.get('fecha'), 
-            r.get('bmb'), 
-            r.get('bmb_propuesto'), 
-            r.get('ruta_anterior', ''), 
-            r.get('ubicacion', ''), 
-            r.get('distancia', 0), 
-            r.get('estado')
-        ])
-    return Response(si.getvalue(), mimetype='text/csv', headers={"Content-Disposition":"attachment;filename=Reporte_BI.csv"})
 
 @app.route('/api/v_final/<id>/<op>')
 def api_v_f(id, op):
     v = visitas_col.find_one({"_id": ObjectId(id)})
     if not v: return jsonify({"s":"error"})
-    
     if op == 'aprobar':
-        pnt_actual = puntos_col.find_one({"Punto de Venta": v['pv']})
-        auditoria_col.insert_one({
-            "pv": v['pv'],
-            "usuario_admin": session.get('user_name'),
-            "fecha_auditoria": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            "bmb_anterior": pnt_actual.get('BMB'),
-            "bmb_nuevo": v['bmb_propuesto'],
-            "ruta_anterior": pnt_actual.get('Ruta'),
-            "ruta_nueva": v['ubicacion'],
-            "distancia_gps": v.get('distancia')
-        })
-        
-        puntos_col.update_one({"Punto de Venta": v['pv']}, {"$set": {"BMB": v['bmb_propuesto'], "Ruta": v['ubicacion']}})
+        # Upsert: Actualiza si existe por nombre, si no, crea uno nuevo.
+        puntos_col.update_one(
+            {"Punto de Venta": v['pv']}, 
+            {"$set": {"BMB": v['bmb_propuesto'], "Ruta": v['ubicacion']}},
+            upsert=True
+        )
         visitas_col.update_one({"_id": ObjectId(id)}, {"$set": {"estado": "Aprobado"}})
     else:
         visitas_col.update_one({"_id": ObjectId(id)}, {"$set": {"estado": "Rechazado"}})
     return jsonify({"s":"ok"})
+
+@app.route('/descargar')
+def desc():
+    cursor = visitas_col.find({"estado": "Aprobado"}, {"f_bmb":0, "f_fachada":0, "_id":0})
+    si = io.StringIO(); w = csv.writer(si)
+    w.writerow(['Punto', 'Asesor', 'Fecha', 'BMB Base', 'BMB Propuesto', 'Ruta Anterior', 'Ruta Nueva', 'Diferencia Metros', 'Estado'])
+    for r in cursor: 
+        w.writerow([r.get('pv'), r.get('n_documento'), r.get('fecha'), r.get('bmb'), r.get('bmb_propuesto'), r.get('ruta_anterior', ''), r.get('ubicacion', ''), r.get('distancia', 0), r.get('estado')])
+    return Response(si.getvalue(), mimetype='text/csv', headers={"Content-Disposition":"attachment;filename=Reporte_BI.csv"})
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
