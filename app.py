@@ -164,7 +164,6 @@ def formulario():
         else:
             bmb_orig, ruta_orig = pnt.get('BMB', ""), pnt.get('Ruta', "")
             dist = calcular_distancia(gps, ruta_orig)
-            # Si cambia BMB, o distancia > 100 o BMB ya está en otro lado -> Pendiente
             estado_v = "Pendiente" if (bmb_in != bmb_orig or dist > 100 or duplicado_info) else "Aprobado"
             is_new = False
 
@@ -234,8 +233,8 @@ def validacion_admin():
     pends = list(visitas_col.find({"estado": "Pendiente"}))
     rows = ""
     for r in pends:
-        duplicado = f'<div style="color:red; font-weight:bold; background:#fff0f0; padding:10px; border-radius:10px; margin-bottom:10px;">⚠️ BMB YA EN USO: {r.get("bmb_duplicado_en")}</div>' if r.get('bmb_duplicado_en') else ''
-        tipo = '<b style="color:green;">[NUEVO PUNTO A CREAR]</b>' if r.get('is_new') else ''
+        duplicado = f'<div style="color:red; font-weight:bold; background:#fff0f0; padding:10px; border-radius:10px; margin-bottom:10px;">⚠️ BMB ACTUALMENTE EN: {r.get("bmb_duplicado_en")}</div>' if r.get('bmb_duplicado_en') else ''
+        tipo = '<b style="color:green;">[ASIGNACIÓN NUEVA]</b>' if r.get('is_new') else ''
         rows += f'''<div class="card" style="border-left: 8px solid #FF9500;">
             {duplicado}
             <h3>{r['pv']} {tipo}</h3>
@@ -244,7 +243,7 @@ def validacion_admin():
                 BMB Base: {r.get('bmb')} | <b style="color:var(--ios-blue);">Propuesto: {r.get('bmb_propuesto')}</b>
             </div>
             <div style="display:flex; gap:5px; margin-top:10px;"><img src="{r['f_bmb']}" style="width:50%;"><img src="{r['f_fachada']}" style="width:50%;"></div>
-            <button class="btn btn-blue" onclick="vF('{r['_id']}', 'aprobar')">Aprobar e Insertar en BD</button>
+            <button class="btn btn-blue" onclick="vF('{r['_id']}', 'aprobar')">Aprobar (Actualizar Punto/BMB)</button>
             <button class="btn btn-light" style="color:red;" onclick="vF('{r['_id']}', 'rechazar')">Rechazar</button>
         </div>'''
     return render_template_string(f"<html><head><meta name='viewport' content='width=device-width, initial-scale=1.0'>{CSS_FIXED}</head><body><div class='sidebar'><a href='/' class='btn btn-light'>← Volver</a></div><div class='main-content'><h2>Validaciones</h2>{rows or '<p>No hay pendientes.</p>'}</div><script>async function vF(id,op){{await fetch('/api/v_final/'+id+'/'+op); location.reload();}}</script></body></html>")
@@ -253,9 +252,26 @@ def validacion_admin():
 def api_v_f(id, op):
     v = visitas_col.find_one({"_id": ObjectId(id)})
     if not v: return jsonify({"s":"error"})
+    
     if op == 'aprobar':
-        # Se inserta o actualiza el punto en la base de datos maestra
-        puntos_col.update_one({"Punto de Venta": v['pv']}, {"$set": {"BMB": v['bmb_propuesto'], "Ruta": v['ubicacion']}}, upsert=True)
+        bmb_objetivo = v['bmb_propuesto']
+        # Lógica de Ajuste: Buscar si el BMB ya existe en algún punto
+        punto_existente = puntos_col.find_one({"BMB": bmb_objetivo})
+        
+        if punto_existente:
+            # SI EL BMB YA EXISTE: Actualizamos ese registro con el nuevo nombre de punto y ubicación
+            puntos_col.update_one(
+                {"BMB": bmb_objetivo}, 
+                {"$set": {"Punto de Venta": v['pv'], "Ruta": v['ubicacion']}}
+            )
+        else:
+            # SI EL BMB NO EXISTE: Creamos/Actualizamos el registro por nombre de Punto de Venta
+            puntos_col.update_one(
+                {"Punto de Venta": v['pv']}, 
+                {"$set": {"BMB": bmb_objetivo, "Ruta": v['ubicacion']}}, 
+                upsert=True
+            )
+        
         visitas_col.update_one({"_id": ObjectId(id)}, {"$set": {"estado": "Aprobado"}})
     else:
         visitas_col.update_one({"_id": ObjectId(id)}, {"$set": {"estado": "Rechazado"}})
@@ -270,7 +286,7 @@ def api_csv():
         reader = csv.DictReader(io.StringIO(content), delimiter=d)
         lista = [{k.strip(): v.strip() for k, v in r.items() if k} for r in reader]
         if lista: 
-            puntos_col.delete_many({}) # Limpia y carga de nuevo
+            puntos_col.delete_many({})
             puntos_col.insert_many(lista)
         return jsonify({"count": len(lista)})
     return jsonify({"error": "No file"}), 400
