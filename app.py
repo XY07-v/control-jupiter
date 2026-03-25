@@ -27,27 +27,28 @@ def calcular_distancia(pos1, pos2):
         return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1-a))
     except: return 0
 
-# --- CSS IOS 26 PREMIUM (CORREGIDO) ---
+# --- CSS PREMIUM CLEAN (BORDES Y BOTONES CORREGIDOS) ---
 CSS_FIXED = """
 <style>
     :root { --ios-blue: #007AFF; --bg: #F2F2F7; --glass: rgba(255, 255, 255, 0.9); }
-    body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); margin: 0; color: #1c1c1e; overflow-x: hidden; }
+    body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); margin: 0; color: #1c1c1e; }
     
     /* Header & Containers */
-    .header { background: var(--glass); backdrop-filter: blur(20px); padding: 15px 20px; position: sticky; top: 0; z-index: 1000; border-bottom: 0.5px solid rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
+    .header-bar { background: var(--glass); backdrop-filter: blur(20px); padding: 15px 20px; position: sticky; top: 0; z-index: 1000; border-bottom: 0.5px solid rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
     .container { padding: 15px; max-width: 600px; margin: auto; }
     
-    /* Cards con esquinas uniformes */
-    .card { background: white; border-radius: 20px; padding: 18px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 0.5px solid rgba(0,0,0,0.1); overflow: hidden; }
+    /* Cards Unificadas (Bordes Suaves) */
+    .card { background: white; border-radius: 20px !important; padding: 20px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 0.5px solid rgba(0,0,0,0.1); overflow: hidden; }
     
     /* Botones Estilo iOS */
     .btn { padding: 12px 18px; border-radius: 14px; border: none; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 14px; text-decoration: none; display: inline-block; text-align: center; }
     .btn-blue { background: var(--ios-blue); color: white; width: 100%; box-sizing: border-box; }
+    .btn-blue:active { background: #0056b3; }
     .btn-light { background: #E5E5EA; color: #1c1c1e; }
     
     /* Modales Corregidos */
     .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); backdrop-filter: blur(10px); z-index: 2000; }
-    .modal-content { background: white; margin: 10% auto; width: 90%; max-width: 550px; border-radius: 25px; padding: 25px; position: relative; max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
+    .modal-content { background: white; margin: 10% auto; width: 90%; max-width: 550px; border-radius: 25px !important; padding: 25px; position: relative; max-height: 85vh; overflow-y: auto; }
     
     /* Tablas y Buscador */
     .search-box { width: 100%; padding: 12px; border-radius: 12px; border: 1px solid #D1D1D6; margin-bottom: 15px; font-size: 16px; outline: none; }
@@ -58,37 +59,46 @@ CSS_FIXED = """
     input, select, textarea { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #D1D1D6; border-radius: 12px; font-size: 15px; box-sizing: border-box; }
 </style>
 """
+FOOTER_HTML = '<div style="text-align:center; padding:20px; font-size:11px; color:#8e8e93;">Desarrollo de Andres Vanegas - Inteligencia de Negocio. Derechos Reservados.</div>'
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        u, p = request.form.get('usuario'), request.form.get('password')
+        user = usuarios_col.find_one({"usuario": u, "password": p})
+        if user:
+            session.update({'user_id': str(user['_id']), 'user_name': user.get('nombre_completo'), 'role': user.get('rol', 'asesor')})
+            return redirect('/')
+    return render_template_string(f"<html><head>{CSS_FIXED}</head><body style='display:flex; justify-content:center; align-items:center;'><div class='card' style='max-width:350px; text-align:center;'><h2>CMR ASISTENCIA A POC</h2><form method='POST'><input type='text' name='usuario' placeholder='Usuario'><input type='password' name='password' placeholder='Password'><button class='btn btn-blue'>ENTRAR</button></form></div>{FOOTER_HTML}</body></html>")
 
 @app.route('/')
 def index():
     if 'user_id' not in session: return redirect('/login')
     if session['role'] == 'asesor': return redirect('/formulario')
-    
-    visitas = list(visitas_col.find({"estado": {"$ne": "Pendiente"}}, {"f_bmb":0, "f_fachada":0}).sort("fecha", -1))
-    rows = "".join([f'''<div class="card" onclick="verVisita('{v["_id"]}')">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-            <b>{v.get("pv")}</b>
-            <span style="font-size:11px; color:var(--ios-blue);">{v.get("fecha")}</span>
-        </div>
-        <div style="font-size:12px; color:#8e8e93; margin-top:5px;">Asesor: {v.get("n_documento")}</div>
-    </div>''' for v in visitas])
-    
+    cursor = visitas_col.find({}, {"f_bmb": 0, "f_fachada": 0}).sort("fecha", -1)
+    rows = "".join([f'<div class="card" onclick="verDetalle(\'{r["_id"]}\')"><b>{r.get("pv")}</b><br><small style="color:#8e8e93;">{r.get("fecha")} · {r.get("n_documento")}</small></div>' for r in cursor])
     return render_template_string(f"""
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />{CSS_FIXED}</head>
     <body>
-        <div class="header">
+        <div class="header-bar">
             <h2 style="margin:0; font-size:20px;">Nestlé BI</h2>
-            <button class="btn btn-light" onclick="openM('m_admin')">Menú</button>
+            <div>
+                <span style="font-size:12px; color:#8e8e93; margin-right:10px;">Hola, {session['user_name']}</span>
+                <button class="btn btn-light" onclick="openM('m_menu')">Opciones</button>
+            </div>
         </div>
-        <div class="container">{rows}</div>
+        <div class="container">
+            <h3>Visitas Recientes</h3>
+            {rows}
+        </div>
 
-        <div id="m_admin" class="modal"><div class="modal-content">
+        <div id="m_menu" class="modal"><div class="modal-content">
             <button class="btn btn-light" onclick="closeM()" style="float:right;">X</button>
             <h3 style="margin-top:0;">Administración</h3>
             <a href="/formulario" class="btn btn-blue" style="margin-bottom:10px;">Nuevo Reporte</a>
-            <a href="/validacion_admin" class="btn btn-light" style="width:100%; margin-bottom:10px; color:#FF9500;">Validaciones Pendientes</a>
-            <button class="btn btn-light" style="width:100%; margin-bottom:10px;" onclick="openM('m_puntos')">Base de Puntos</button>
-            <button class="btn btn-light" style="width:100%; margin-bottom:10px;" onclick="openM('m_users')">Usuarios y Permisos</button>
+            <a href="/validacion_admin" class="btn btn-light" style="width:100%; margin-bottom:10px; color:#FF9500;">Pendientes de Validación</a>
+            <button class="btn btn-light" style="width:100%; margin-bottom:10px;" onclick="openM('m_puntos')">Gestionar Puntos</button>
+            <button class="btn btn-light" style="width:100%; margin-bottom:10px;" onclick="openM('m_users')">Gestionar Usuarios</button>
             <button class="btn btn-light" style="width:100%; margin-bottom:10px;" onclick="openM('m_csv')">Carga Masiva</button>
             <a href="/descargar" class="btn btn-light" style="width:100%; margin-bottom:10px;">Exportar CSV</a>
             <a href="/logout" class="btn btn-light" style="width:100%; color:red;">Cerrar Sesión</a>
@@ -108,44 +118,28 @@ def index():
             <div id="cont_u"></div>
         </div></div>
 
+        <div id="m_csv" class="modal"><div class="modal-content">
+            <button class="btn btn-light" onclick="closeM()">← Volver</button>
+            <h3>Carga Masiva CSV</h3>
+            <input type="file" id="f_csv_file">
+            <button class="btn btn-blue" onclick="subirCSV()">Procesar Archivo</button>
+        </div></div>
+
         <div id="m_det" class="modal"><div class="modal-content">
             <button class="btn btn-light" onclick="closeM()" style="margin-bottom:15px;">← Cerrar</button>
             <div id="det_body"></div>
         </div></div>
 
-        <div id="m_csv" class="modal"><div class="modal-content">
-            <button class="btn btn-light" onclick="closeM()">← Volver</button>
-            <h3>Carga Masiva CSV</h3>
-            <p style="font-size:12px; color:#8e8e93;">Sube el archivo CSV de puntos de venta (Delimitado por , o ;)</p>
-            <input type="file" id="f_csv_file">
-            <button class="btn btn-blue" onclick="subirCSV()">Procesar Archivo</button>
-        </div></div>
-
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
         <script>
             let pts_data = [];
+            document.addEventListener('keydown', e => {{ if(e.key === 'Escape') closeM(); }});
             function openM(id) {{ 
                 document.getElementById(id).style.display='block'; 
                 if(id=='m_puntos') cargaP(); 
                 if(id=='m_users') cargaU(); 
             }}
             function closeM() {{ document.querySelectorAll('.modal').forEach(m=>m.style.display='none'); }}
-
-            async function verVisita(id) {{
-                openM('m_det'); document.getElementById('det_body').innerHTML = "Cargando...";
-                const res = await fetch('/get_img/'+id); const d = await res.json();
-                document.getElementById('det_body').innerHTML = `
-                    <div id="map" style="height:200px; border-radius:15px; margin-bottom:15px;"></div>
-                    <img src="${{d.f1}}" style="width:100%; border-radius:15px; margin-bottom:10px;">
-                    <img src="${{d.f2}}" style="width:100%; border-radius:15px;">
-                `;
-                if(d.gps) {{
-                    const c = d.gps.split(',');
-                    const m = L.map('map').setView(c, 15);
-                    L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png').addTo(m);
-                    L.marker(c).addTo(m);
-                }}
-            }}
 
             async function cargaP() {{
                 const res = await fetch('/api/puntos'); pts_data = await res.json();
@@ -161,7 +155,7 @@ def index():
                 data.forEach(p => {{
                     h += '<tr>';
                     cols.forEach(c => h += `<td>${{p[c]||''}}</td>`);
-                    h += `<td><button class="btn btn-light" style="font-size:10px" onclick='editP(${{JSON.stringify(p)}})'>Editar</button></td></tr>`;
+                    h += `<td><button class="btn btn-light" onclick='editP(${{JSON.stringify(p)}})'>Edit</button></td></tr>`;
                 }});
                 document.getElementById('cont_p').innerHTML = h + '</table>';
             }}
@@ -187,17 +181,17 @@ def index():
 
             async function cargaU() {{
                 const res = await fetch('/api/usuarios'); const users = await res.json();
-                let h = '<table><tr><th>Nombre</th><th>Rol</th><th>Acción</th></tr>';
+                let h = '<table><tr><th>Nombre</th><th>Acción</th></tr>';
                 users.forEach(u => {{
-                    h += `<tr><td>${{u.nombre_completo}}</td><td>${{u.rol}}</td><td><button class="btn btn-light" onclick='editU(${{JSON.stringify(u)}})'>Editar</button></td></tr>`;
+                    h += `<tr><td>${{u.nombre_completo}}</td><td><button class="btn btn-light" onclick='editU(${{JSON.stringify(u)}})'>Edit</button></td></tr>`;
                 }});
                 document.getElementById('cont_u').innerHTML = h + '</table>';
             }}
 
             function editU(u={{}}) {{
                 const form = `<h3>${{u._id?'Editar':'Nuevo'}} Usuario</h3>
-                <input type="text" id="un" placeholder="Nombre Completo" value="${{u.nombre_completo||''}}">
-                <input type="text" id="uu" placeholder="Usuario de acceso" value="${{u.usuario||''}}">
+                <input type="text" id="un" placeholder="Nombre" value="${{u.nombre_completo||''}}">
+                <input type="text" id="uu" placeholder="Usuario" value="${{u.usuario||''}}">
                 <input type="text" id="up" placeholder="Password" value="${{u.password||''}}">
                 <select id="ur"><option value="asesor" ${{u.rol=='asesor'?'selected':''}}>Asesor</option><option value="admin" ${{u.rol=='admin'?'selected':''}}>Admin</option></select>
                 <button class="btn btn-blue" onclick="saveU('${{u._id||''}}')">Guardar Usuario</button>`;
@@ -214,13 +208,28 @@ def index():
                 const f = document.getElementById('f_csv_file').files[0]; if(!f) return;
                 const fd = new FormData(); fd.append('file_csv', f);
                 const r = await fetch('/carga_masiva_puntos', {{method:'POST', body:fd}});
-                const res = await r.json(); alert("Cargados: " + res.count); location.reload();
+                const res = await r.json(); alert("✅ Cargados: " + res.count + " registros"); closeM();
+            }}
+
+            async function verDetalle(id) {{
+                openM('m_det'); document.getElementById('det_body').innerHTML = "Cargando...";
+                const res = await fetch('/get_img/'+id); const d = await res.json();
+                document.getElementById('det_body').innerHTML = `
+                    <div id="map" style="height:200px; border-radius:15px; margin-bottom:15px;"></div>
+                    <img src="${{d.f1}}" style="width:100%; border-radius:15px; margin-bottom:10px;">
+                    <img src="${{d.f2}}" style="width:100%; border-radius:15px;">
+                `;
+                if(d.gps) {{
+                    const c = d.gps.split(',');
+                    const m = L.map('map').setView(c, 15);
+                    L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png').addTo(m);
+                    L.marker(c).addTo(m);
+                }}
             }}
         </script>
+        {FOOTER_HTML}
     </body></html>
     """)
-
-# --- APIS Y RUTAS LÓGICAS (TOTALMENTE RESTAURADAS) ---
 
 @app.route('/formulario', methods=['GET', 'POST'])
 def formulario():
@@ -233,40 +242,47 @@ def formulario():
         pnt = puntos_col.find_one({"Punto de Venta": pv})
         bmb_orig = pnt.get('BMB') if pnt else ""
         dist = calcular_distancia(gps, pnt.get('Ruta')) if pnt else 0
+        pend = (bmb_in != bmb_orig) or (dist > 100)
         
-        estado = "Pendiente" if (bmb_in != bmb_orig or dist > 100) else "Aprobado"
         visitas_col.insert_one({
             "pv": pv, "n_documento": session['user_name'], "fecha": request.form.get('fecha'),
-            "bmb": bmb_orig, "bmb_propuesto": bmb_in, "ubicacion": gps, 
-            "gps_anterior": pnt.get('Ruta') if pnt else gps, "distancia": round(dist, 1),
-            "estado": estado, "f_bmb": b64(request.files.get('f1')), "f_fachada": b64(request.files.get('f2')),
-            "Nota": request.form.get('nota'), "motivo": request.form.get('motivo')
+            "bmb": bmb_orig, "bmb_propuesto": bmb_in,
+            "ubicacion": gps, "gps_anterior": pnt.get('Ruta') if pnt else gps, "distancia": round(dist, 1),
+            "estado": "Pendiente" if pend else "Aprobado",
+            "Nota": request.form.get('nota'), "motivo": request.form.get('motivo'),
+            "f_bmb": b64(request.files.get('f1')), "f_fachada": b64(request.files.get('f2'))
         })
         return redirect('/formulario?msg=OK')
 
     puntos = list(puntos_col.find({}, {"Punto de Venta": 1, "BMB": 1}))
     opts = "".join([f'<option value="{p["Punto de Venta"]}" data-bmb="{p.get("BMB","")}"> ' for p in puntos])
     
+    msg_exito = ""
+    if request.args.get('msg') == 'OK':
+        msg_exito = '<div id="exito" style="position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#34C759; color:white; padding:15px 30px; border-radius:15px; font-weight:bold; z-index:5000;">✓ Registro Exitoso</div><script>setTimeout(()=>document.getElementById("exito").remove(), 4000);</script>'
+
+    btn_regresar = '<a href="/" class="btn btn-light" style="margin-bottom:15px;">← Panel Principal</a>' if session['role'] == 'admin' else ''
+
     return render_template_string(f"""
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">{CSS_FIXED}</head>
     <body onload="navigator.geolocation.getCurrentPosition(p=>document.getElementById('gps').value=p.coords.latitude+','+p.coords.longitude)">
-        <div class="container" style="max-width:450px;">
+        {msg_exito}
+        <div class="container" style="max-width:480px;">
+            {btn_regresar}
             <div class="card">
-                <h3 style="text-align:center; color:var(--ios-blue);">Reporte de Visita</h3>
+                <h3 style="text-align:center; color:var(--ios-blue);">NUEVA VISITA</h3>
                 <form method="POST" enctype="multipart/form-data">
                     <input list="pts" name="pv" id="pv_i" placeholder="Seleccionar Punto" onchange="const o=document.querySelector('#pts option[value=\\''+this.value+'\\']'); if(o) document.getElementById('bmb_i').value=o.dataset.bmb;" required>
                     <datalist id="pts">{opts}</datalist>
                     <input type="text" name="bmb" id="bmb_i" placeholder="BMB Máquina" required>
                     <input type="date" name="fecha" value="{datetime.now().strftime('%Y-%m-%d')}">
-                    <select name="motivo"><option>Visita Exitosa</option><option>Cerrado</option></select>
-                    <textarea name="nota" placeholder="Notas"></textarea>
-                    <label style="font-size:11px; color:#8e8e93;">Foto BMB</label>
-                    <input type="file" name="f1" accept="image/*" capture="camera" required>
-                    <label style="font-size:11px; color:#8e8e93;">Foto Fachada</label>
-                    <input type="file" name="f2" accept="image/*" capture="camera" required>
+                    <select name="motivo"><option>Visita Exitosa</option><option>Punto Cerrado</option></select>
+                    <textarea name="nota" placeholder="Observaciones"></textarea>
+                    <label style="font-size:11px; opacity:0.6;">Foto BMB</label><input type="file" name="f1" accept="image/*" capture="camera" required>
+                    <label style="font-size:11px; opacity:0.6;">Foto Fachada</label><input type="file" name="f2" accept="image/*" capture="camera" required>
                     <input type="hidden" name="ubicacion" id="gps">
                     <button class="btn btn-blue" style="margin-top:10px;">Enviar Reporte</button>
-                    {f'<a href="/" class="btn btn-light" style="width:100%; margin-top:10px; box-sizing:border-box;">Volver al Panel</a>' if session['role']=='admin' else ''}
+                    <a href="/logout" style="display:block; text-align:center; margin-top:20px; color:red; text-decoration:none;">Cerrar Sesión</a>
                 </form>
             </div>
         </div>
@@ -279,7 +295,7 @@ def validacion_admin():
     pends = list(visitas_col.find({"estado": "Pendiente"}))
     rows = ""
     for r in pends:
-        rows += f'''<div class="card">
+        rows += f'''<div class="card" style="border-left: 5px solid #FF9500;">
             <b>{r['pv']}</b><br><small>Alerta: {r['distancia']}m de distancia</small>
             <div style="display:flex; gap:10px; margin:15px 0;">
                 <img src="{r['f_bmb']}" style="width:48%; border-radius:12px;">
@@ -290,7 +306,7 @@ def validacion_admin():
                 <button class="btn btn-light" style="color:red; flex:1;" onclick="vF('{r['_id']}', 'rechazar')">Rechazar</button>
             </div>
         </div>'''
-    return render_template_string(f"<html><head><meta name='viewport' content='width=device-width, initial-scale=1.0'>{CSS_FIXED}</head><body><div class='header'><button class='btn btn-light' onclick='history.back()'>←</button><h3>Pendientes</h3><div></div></div><div class='container'>{rows or '<p>Todo al día</p>'}</div><script>async function vF(id,op){{await fetch('/api/v_final/'+id+'/'+op); location.reload();}}</script></body></html>")
+    return render_template_string(f"<html><head><meta name='viewport' content='width=device-width, initial-scale=1.0'>{CSS_FIXED}</head><body><div class='container'><h2>Validación</h2>{rows or '<p>Todo al día</p>'}<br><a href='/' class='btn btn-gray'>Volver</a></div><script>async function vF(id,op){{await fetch('/api/v_final/'+id+'/'+op); location.reload();}}</script></body></html>")
 
 @app.route('/api/v_final/<id>/<op>')
 def api_v_final(id, op):
@@ -302,61 +318,41 @@ def api_v_final(id, op):
         visitas_col.update_one({"_id": ObjectId(id)}, {"$set": {"estado": "Rechazado"}})
     return jsonify({"s":"ok"})
 
+@app.route('/carga_masiva_puntos', methods=['POST'])
+def carga():
+    f = request.files.get('file_csv')
+    if f:
+        content = f.stream.read().decode("utf-8-sig", errors="ignore")
+        d = ';' if content.count(';') > content.count(',') else ','
+        reader = csv.DictReader(io.StringIO(content), delimiter=d)
+        lista = [{k.strip(): v.strip() for k, v in r.items() if k} for r in reader]
+        if lista:
+            puntos_col.delete_many({}); puntos_col.insert_many(lista)
+        return jsonify({"count": len(lista)})
+    return jsonify({"error": "No file"}), 400
+
 @app.route('/api/puntos')
-def api_pts(): p=list(puntos_col.find()); [x.update({"_id":str(x["_id"])}) for x in p]; return jsonify(p)
-
+def api_puntos(): p = list(puntos_col.find()); [x.update({"_id": str(x["_id"])}) for x in p]; return jsonify(p)
 @app.route('/api/actualizar_punto', methods=['POST'])
-def up_p_fixed():
-    d = request.json
-    puntos_col.update_one({"_id": ObjectId(d['id'])}, {"$set": d['datos']})
-    return jsonify({"s": "ok"})
-
+def up_p(): d = request.json; puntos_col.update_one({"_id": ObjectId(d['id'])}, {"$set": d['datos']}); return jsonify({"s": "ok"})
 @app.route('/api/usuarios')
-def api_u(): u=list(usuarios_col.find()); [x.update({"_id":str(x["_id"])}) for x in u]; return jsonify(u)
-
+def api_users(): u = list(usuarios_col.find()); [x.update({"_id": str(x["_id"])}) for x in u]; return jsonify(u)
 @app.route('/api/actualizar_usuario', methods=['POST'])
-def up_u_fixed():
+def up_u():
     d = request.json
     if d['id']:
         usuarios_col.update_one({"_id": ObjectId(d['id'])}, {"$set": {"nombre_completo": d['nom'], "usuario": d['usr'], "password": d['pas'], "rol": d['rol']}})
     else:
         usuarios_col.insert_one({"nombre_completo": d['nom'], "usuario": d['usr'], "password": d['pas'], "rol": d['rol']})
     return jsonify({"s": "ok"})
-
-@app.route('/carga_masiva_puntos', methods=['POST'])
-def carga_csv():
-    f = request.files.get('file_csv')
-    if f:
-        content = f.stream.read().decode("utf-8-sig")
-        delim = ';' if content.count(';') > content.count(',') else ','
-        reader = csv.DictReader(io.StringIO(content), delimiter=delim)
-        lista = [r for r in reader]
-        if lista:
-            puntos_col.delete_many({}); puntos_col.insert_many(lista)
-        return jsonify({"count": len(lista)})
-    return jsonify({"error": "No file"}), 400
-
-@app.route('/get_img/<id>')
-def get_i(id): v=visitas_col.find_one({"_id":ObjectId(id)}); return jsonify({"f1":v.get('f_bmb'), "f2":v.get('f_fachada'), "gps":v.get('ubicacion')})
-
 @app.route('/descargar')
-def desc_csv():
-    cursor = visitas_col.find({}, {"f_bmb": 0, "f_fachada": 0, "_id": 0})
-    si = io.StringIO(); w = csv.writer(si)
-    w.writerow(['Punto', 'Asesor', 'Fecha', 'BMB Propuesto', 'Estado'])
-    for r in cursor: w.writerow([r.get('pv'), r.get('n_documento'), r.get('fecha'), r.get('bmb_propuesto'), r.get('estado')])
-    return Response(si.getvalue(), mimetype='text/csv', headers={"Content-Disposition":"attachment;filename=Reporte_Visitas.csv"})
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        u, p = request.form.get('u'), request.form.get('p')
-        user = usuarios_col.find_one({"usuario": u, "password": p})
-        if user:
-            session.update({'user_id': str(user['_id']), 'user_name': user['nombre_completo'], 'role': user.get('rol', 'asesor')})
-            return redirect('/')
-    return render_template_string(f"<html><head><meta name='viewport' content='width=device-width, initial-scale=1.0'>{CSS_FIXED}</head><body style='display:flex; align-items:center; justify-content:center; height:100vh;'><div class='card' style='width:300px; text-align:center;'><h3>Nestlé BI</h3><form method='POST'><input type='text' name='u' placeholder='Usuario'><input type='password' name='p' placeholder='Password'><button class='btn btn-blue' style='width:100%;'>Entrar</button></form></div></body></html>")
-
+def desc():
+    cursor = visitas_col.find({"estado": "Aprobado"}, {"f_bmb": 0, "f_fachada": 0, "_id": 0})
+    si = io.StringIO(); w = csv.writer(si); w.writerow(['Punto', 'Asesor', 'Fecha', 'BMB Base', 'BMB Propuesto', 'Distancia', 'Nota'])
+    for r in cursor: w.writerow([r.get('pv'), r.get('n_documento'), r.get('fecha'), r.get('bmb'), r.get('bmb_propuesto'), r.get('distancia'), r.get('Nota')])
+    return Response(si.getvalue(), mimetype='text/csv', headers={"Content-Disposition":"attachment;filename=Reporte_BI.csv"})
+@app.route('/get_img/<id>')
+def get_img(id): d = visitas_col.find_one({"_id": ObjectId(id)}); return jsonify({"f1": d.get('f_bmb'), "f2": d.get('f_fachada'), "gps": d.get('ubicacion')})
 @app.route('/logout')
 def logout(): session.clear(); return redirect('/login')
 
