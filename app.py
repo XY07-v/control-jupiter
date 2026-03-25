@@ -176,12 +176,13 @@ def formulario():
             
         visitas_col.insert_one({
             "pv": pv, "n_documento": session['user_name'], "fecha": request.form.get('fecha'),
-            "bmb": bmb_orig, "bmb_propuesto": bmb_in, "ubicacion": gps, "distancia": round(dist, 1),
+            "bmb": bmb_orig, "bmb_propuesto": bmb_in, "ubicacion": gps, 
+            "ruta_anterior": ruta_orig, "distancia": round(dist, 1),
             "estado": estado_v,
             "motivo": request.form.get('motivo'), "f_bmb": b64(request.files.get('f1')), "f_fachada": b64(request.files.get('f2'))
         })
         
-        # Si fue aprobado automático (dist < 100 y mismo BMB), actualizar de todos modos la Ruta por si estaba vacía
+        # Si fue aprobado automático, actualizar la Ruta base
         if estado_v == "Aprobado":
             puntos_col.update_one({"Punto de Venta": pv}, {"$set": {"BMB": bmb_in, "Ruta": gps}})
             
@@ -255,8 +256,20 @@ def api_csv():
 def desc():
     cursor = visitas_col.find({"estado": "Aprobado"}, {"f_bmb":0, "f_fachada":0, "_id":0})
     si = io.StringIO(); w = csv.writer(si)
-    w.writerow(['Punto', 'Asesor', 'Fecha', 'BMB Base', 'BMB Propuesto', 'Estado'])
-    for r in cursor: w.writerow([r.get('pv'), r.get('n_documento'), r.get('fecha'), r.get('bmb'), r.get('bmb_propuesto'), r.get('estado')])
+    # Header con las columnas de Ruta y Distancia
+    w.writerow(['Punto', 'Asesor', 'Fecha', 'BMB Base', 'BMB Propuesto', 'Ruta Anterior', 'Ruta Nueva', 'Diferencia Metros', 'Estado'])
+    for r in cursor: 
+        w.writerow([
+            r.get('pv'), 
+            r.get('n_documento'), 
+            r.get('fecha'), 
+            r.get('bmb'), 
+            r.get('bmb_propuesto'), 
+            r.get('ruta_anterior', ''), 
+            r.get('ubicacion', ''), 
+            r.get('distancia', 0), 
+            r.get('estado')
+        ])
     return Response(si.getvalue(), mimetype='text/csv', headers={"Content-Disposition":"attachment;filename=Reporte_BI.csv"})
 
 @app.route('/api/v_final/<id>/<op>')
@@ -265,7 +278,6 @@ def api_v_f(id, op):
     if not v: return jsonify({"s":"error"})
     
     if op == 'aprobar':
-        # Antes de actualizar, guardamos en auditoria_bmb para trazabilidad
         pnt_actual = puntos_col.find_one({"Punto de Venta": v['pv']})
         auditoria_col.insert_one({
             "pv": v['pv'],
@@ -278,7 +290,6 @@ def api_v_f(id, op):
             "distancia_gps": v.get('distancia')
         })
         
-        # Actualizamos el Punto de Venta con los datos finales
         puntos_col.update_one({"Punto de Venta": v['pv']}, {"$set": {"BMB": v['bmb_propuesto'], "Ruta": v['ubicacion']}})
         visitas_col.update_one({"_id": ObjectId(id)}, {"$set": {"estado": "Aprobado"}})
     else:
