@@ -1,16 +1,19 @@
-from flask import Flask, render_template_string, request, redirect, jsonify, session
+from flask import Flask, render_template_string, request, redirect, jsonify, Response, session
 from pymongo import MongoClient
 from bson.objectid import ObjectId
-import base64, gc, math
+import base64, io, csv, math, gc, json
 from datetime import datetime
 
 app = Flask(__name__)
-app.secret_key = "nestle_bi_v17_full_data"
+app.secret_key = "nestle_bi_poc_2026_v18_final"
 
 # --- CONEXIÓN MONGODB ---
 MONGO_URI = "mongodb+srv://control-jupiter:control-jupiter1234@cluster0.dtureen.mongodb.net/NestleDB?retryWrites=true&w=majority"
 client = MongoClient(MONGO_URI)
 db = client['NestleDB']
+visitas_col = db['visitas']
+usuarios_col = db['usuarios']
+puntos_col = db['puntos_venta']
 
 def calcular_distancia(pos1, pos2):
     if not pos1 or not pos2: return 0
@@ -32,82 +35,81 @@ CSS = """
     .btn { width: 100%; padding: 12px; border-radius: 10px; border: none; font-weight: 600; cursor: pointer; margin-bottom: 8px; font-size: 14px; display: block; text-align: center; text-decoration: none; box-sizing: border-box; }
     .btn-blue { background: var(--blue); color: white; }
     .btn-light { background: #E5E5EA; color: #1c1c1e; }
+    .btn-red { background: #FF3B30; color: white; }
     .nav-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
     .modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.6); backdrop-filter: blur(5px); z-index: 1000; }
-    .modal-content { background: white; margin: 10% auto; width: 90%; max-width: 500px; border-radius: 20px; padding: 20px; max-height: 80vh; overflow-y: auto; }
-    table { width: 100%; border-collapse: collapse; font-size: 11px; }
-    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #eee; }
-    img { width: 100%; border-radius: 10px; margin-top: 10px; border: 1px solid #ddd; }
-    .det-item { margin-bottom: 10px; border-bottom: 1px solid #f0f0f0; padding-bottom: 5px; }
+    .modal-content { background: white; margin: 5% auto; width: 90%; max-width: 500px; border-radius: 20px; padding: 20px; max-height: 85vh; overflow-y: auto; }
+    input, select { width: 100%; padding: 12px; margin: 5px 0 15px 0; border: 1px solid #ddd; border-radius: 10px; box-sizing: border-box; }
+    img { width: 100%; border-radius: 10px; margin-top: 10px; }
 </style>
 """
 
 @app.route('/')
 def index():
     if 'user_id' not in session: return redirect('/login')
+    if session.get('role') == 'asesor': return redirect('/formulario')
     return render_template_string(f"""
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">{CSS}</head>
     <body>
-        <h3>Nestlé BI - Dashboard</h3>
+        <h3>Panel Administrativo</h3>
         <div class="nav-grid">
             <button class="btn btn-blue" onclick="cargar('visitas')">Visitas</button>
             <button class="btn btn-blue" onclick="cargar('puntos')">Puntos</button>
             <button class="btn btn-light" onclick="cargar('usuarios')">Usuarios</button>
-            <a href="/formulario" class="btn btn-light">Nuevo Reporte</a>
+            <button class="btn btn-light" onclick="document.getElementById('m_csv').style.display='block'">Carga Masiva</button>
+            <a href="/descargar" class="btn btn-light">Exportar CSV</a>
+            <a href="/formulario" class="btn btn-blue">Nuevo Reporte</a>
         </div>
         <div id="main_cont"></div>
-        <div id="modal_full" class="modal"><div class="modal-content" id="modal_body"></div></div>
+        
+        <div id="m_csv" class="modal"><div class="modal-content" style="padding:20px;">
+            <h3>Carga Masiva (.csv)</h3>
+            <input type="file" id="f_csv" accept=".csv">
+            <button class="btn btn-blue" onclick="subirCSV()">Procesar</button>
+            <button class="btn btn-light" onclick="document.getElementById('m_csv').style.display='none'">Cerrar</button>
+        </div></div>
+
+        <div id="m_det" class="modal"><div class="modal-content" id="det_body" style="padding:20px;"></div></div>
+
         <script>
             async function cargar(tipo) {{
                 const cont = document.getElementById('main_cont');
-                cont.innerHTML = 'Cargando...';
+                cont.innerHTML = 'Consultando...';
                 const r = await fetch('/api/get/' + tipo);
                 const data = await r.json();
-                let html = '<h4>Lista de ' + tipo + '</h4>';
+                let h = '<h4>Registros: ' + tipo + '</h4>';
                 data.forEach(d => {{
-                    html += `<div class="card">
+                    h += `<div class="card">
                         <b>${{d.pv || d.nombre_completo || d['Punto de Venta']}}</b><br>
                         <small>${{d.fecha || d.rol || d.BMB || ''}}</small>
-                        <button class="btn btn-light" style="margin-top:8px; font-size:11px;" onclick="verMas('${{tipo}}','${{d._id}}')">Ver Todo / Editar</button>
+                        <button class="btn btn-light" style="margin-top:8px;" onclick="verDetalle('${{tipo}}','${{d._id}}')">Ver Todo</button>
                     </div>`;
                 }});
-                cont.innerHTML = html;
+                cont.innerHTML = h;
             }}
-            async function verMas(tipo, id) {{
-                const m = document.getElementById('modal_full');
-                const b = document.getElementById('modal_body');
-                m.style.display = 'block'; b.innerHTML = 'Consultando...';
+
+            async function verDetalle(tipo, id) {{
+                const b = document.getElementById('det_body');
+                document.getElementById('m_det').style.display='block';
+                b.innerHTML = 'Cargando...';
                 const r = await fetch(`/api/detalle/${{tipo}}/${{id}}`);
                 const d = await r.json();
-                let info = `<button class="btn btn-light" onclick="document.getElementById('modal_full').style.display='none'">Cerrar</button>`;
-                for (let k in d) {{
-                    if(!k.includes('f_')) info += `<div class="det-item"><b>${{k}}:</b> ${{d[k]}}</div>`;
-                }}
-                if(d.f_bmb) info += `<img src="${{d.f_bmb}}"><img src="${{d.f_fachada}}">`;
-                b.innerHTML = info;
+                let html = '<button class="btn btn-light" onclick="document.getElementById(\\'m_det\\').style.display=\\'none\\'">Cerrar</button>';
+                for (let k in d) {{ if(!k.includes('f_')) html += `<p style="font-size:12px;"><b>${{k}}:</b> ${{d[k]}}</p>`; }}
+                if(d.f_bmb) html += `<img src="${{d.f_bmb}}"><img src="${{d.f_fachada}}">`;
+                b.innerHTML = html;
+            }}
+
+            async function subirCSV() {{
+                const f = document.getElementById('f_csv').files[0]; if(!f) return;
+                const fd = new FormData(); fd.append('file_csv', f);
+                const r = await fetch('/carga_masiva_puntos', {{method:'POST', body:fd}});
+                const res = await r.json(); alert("Cargados: " + res.count); location.reload();
             }}
         </script>
-        <a href="/logout" class="btn btn-light" style="color:red;">Cerrar Sesión</a>
+        <a href="/logout" class="btn btn-red">Cerrar Sesión</a>
     </body></html>
     """)
-
-# --- APIs DE DATOS ---
-
-@app.route('/api/get/<tipo>')
-def api_get(tipo):
-    col = db['visitas' if tipo=='visitas' else 'puntos_venta' if tipo=='puntos' else 'usuarios']
-    # Traemos solo texto para el listado inicial
-    res = list(col.find({}, {"f_bmb":0, "f_fachada":0}).limit(100))
-    for d in res: d['_id'] = str(d['_id'])
-    return jsonify(res)
-
-@app.route('/api/detalle/<tipo>/<id>')
-def api_det(tipo, id):
-    col = db['visitas' if tipo=='visitas' else 'puntos_venta' if tipo=='puntos' else 'usuarios']
-    doc = col.find_one({"_id": ObjectId(id)})
-    if doc: doc['_id'] = str(doc['_id'])
-    gc.collect()
-    return jsonify(doc)
 
 @app.route('/formulario', methods=['GET', 'POST'])
 def formulario():
@@ -118,54 +120,113 @@ def formulario():
             b = base64.b64encode(f.read()).decode(); f.close()
             return f"data:image/jpeg;base64,{b}"
         
-        pv_in = request.form.get('pv')
-        gps_in = request.form.get('gps')
-        pnt = db['puntos_venta'].find_one({"Punto de Venta": pv_in})
-        dist = calcular_distancia(gps_in, pnt.get('Ruta')) if pnt else 0
+        pv_in, bmb_in, gps = request.form.get('pv'), request.form.get('bmb'), request.form.get('gps')
+        pnt = puntos_col.find_one({"Punto de Venta": pv_in})
+        bmb_base = pnt.get('BMB', "NUEVO") if pnt else "NUEVO"
+        dist = calcular_distancia(gps, pnt.get('Ruta')) if pnt else 0
         
-        reporte = {
-            "pv": pv_in,
-            "bmb_actual": pnt.get('BMB') if pnt else "NUEVO",
-            "bmb_propuesto": request.form.get('bmb'),
-            "fecha": request.form.get('fecha'),
-            "n_documento": session.get('user_name'),
-            "ubicacion": gps_in,
-            "distancia_m": round(dist, 1),
-            "estado": "Pendiente",
-            "f_bmb": to_b64(request.files.get('f1')),
-            "f_fachada": to_b64(request.files.get('f2'))
-        }
-        db['visitas'].insert_one(reporte)
+        # Validación Automática
+        estado = "Pendiente" if (bmb_in != bmb_base or dist > 100) else "Aprobado"
+        
+        visitas_col.insert_one({
+            "pv": pv_in, "bmb_actual": bmb_base, "bmb_propuesto": bmb_in,
+            "fecha": request.form.get('fecha'), "n_documento": session.get('user_name'),
+            "motivo": request.form.get('motivo'), "ubicacion": gps,
+            "distancia_m": round(dist, 1), "estado": estado,
+            "f_bmb": to_b64(request.files.get('f1')), "f_fachada": to_b64(request.files.get('f2'))
+        })
+        if estado == "Aprobado":
+            puntos_col.update_one({"Punto de Venta": pv_in}, {"$set": {"BMB": bmb_in, "Ruta": gps}}, upsert=True)
+        
         gc.collect()
-        return redirect('/?msg=OK')
+        return redirect('/formulario?msg=OK')
 
-    opts = "".join([f'<option value="{p["Punto de Venta"]}">' for p in db['puntos_venta'].find({}, {"Punto de Venta":1}).limit(300)])
+    pts = list(puntos_col.find({}, {"Punto de Venta": 1, "BMB": 1, "_id": 0}))
+    opts = "".join([f'<option value="{p["Punto de Venta"]}">' for p in pts])
+    
     return render_template_string(f"""
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">{CSS}</head>
     <body onload="navigator.geolocation.getCurrentPosition(p=>document.getElementById('gps').value=p.coords.latitude+','+p.coords.longitude)">
         <div class="card">
-            <h3>Nuevo Reporte</h3>
+            <h2 style="text-align:center; color:var(--blue);">Nestlé BI</h2>
             <form method="POST" enctype="multipart/form-data">
-                <input list="pts" name="pv" placeholder="Seleccionar Punto" class="btn" style="text-align:left; border:1px solid #ccc; color:black;">
+                <label>Punto de Venta</label>
+                <input list="pts" name="pv" id="pv_i" oninput="vincular(this.value)" required>
                 <datalist id="pts">{opts}</datalist>
-                <input type="text" name="bmb" placeholder="Nuevo BMB (Propuesto)" class="btn" style="text-align:left; border:1px solid #ccc; color:black;">
-                <input type="date" name="fecha" value="{datetime.now().strftime('%Y-%m-%d')}" class="btn" style="border:1px solid #ccc;">
-                <label style="font-size:12px;">Foto BMB</label><input type="file" name="f1" accept="image/*" capture="camera">
-                <label style="font-size:12px;">Foto Fachada</label><input type="file" name="f2" accept="image/*" capture="camera">
+                
+                <label>BMB Detectado</label>
+                <input type="text" name="bmb" id="bmb_i" required>
+                
+                <label>Fecha</label>
+                <input type="date" name="fecha" value="{datetime.now().strftime('%Y-%m-%d')}">
+                
+                <label>Motivo de Visita</label>
+                <select name="motivo">
+                    <option>Visita Exitosa</option>
+                    <option>Punto Cerrado</option>
+                    <option>Máquina no encontrada</option>
+                </select>
+
+                <label>Foto BMB</label><input type="file" name="f1" accept="image/*" capture="camera" required>
+                <label>Foto Fachada</label><input type="file" name="f2" accept="image/*" capture="camera" required>
+                
                 <input type="hidden" name="gps" id="gps">
-                <button class="btn btn-blue" style="margin-top:15px;">Enviar Datos</button>
-                <a href="/" class="btn btn-light">Regresar</a>
+                <button class="btn btn-blue">Enviar Reporte</button>
+                <a href="/" class="btn btn-light">Volver al Panel</a>
             </form>
         </div>
+        <script>
+            const pts = {json.dumps(pts)};
+            function vincular(val) {{
+                const p = pts.find(x => x['Punto de Venta'] === val);
+                if(p) document.getElementById('bmb_i').value = p.BMB || '';
+            }}
+        </script>
     </body></html>
     """)
+
+@app.route('/descargar')
+def descargar():
+    cursor = visitas_col.find({"estado": "Aprobado"}, {"f_bmb":0, "f_fachada":0, "_id":0})
+    si = io.StringIO(); w = csv.writer(si)
+    w.writerow(['Punto', 'BMB Base', 'BMB Propuesto', 'Fecha', 'Asesor', 'Motivo', 'Distancia'])
+    for r in cursor: w.writerow([r.get('pv'), r.get('bmb_actual'), r.get('bmb_propuesto'), r.get('fecha'), r.get('n_documento'), r.get('motivo'), r.get('distancia_m')])
+    return Response(si.getvalue(), mimetype='text/csv', headers={"Content-Disposition":"attachment;filename=Reporte_BI.csv"})
+
+@app.route('/carga_masiva_puntos', methods=['POST'])
+def carga_csv():
+    f = request.files.get('file_csv')
+    if f:
+        content = f.stream.read().decode("utf-8-sig", errors="ignore")
+        sep = ';' if content.count(';') > content.count(',') else ','
+        reader = csv.DictReader(io.StringIO(content), delimiter=sep)
+        lista = [r for r in reader]
+        if lista:
+            puntos_col.delete_many({})
+            puntos_col.insert_many(lista)
+        return jsonify({"count": len(lista)})
+    return jsonify({"error": "No file"}), 400
+
+@app.route('/api/get/<tipo>')
+def api_get(tipo):
+    col = db['visitas' if tipo=='visitas' else 'puntos_venta' if tipo=='puntos' else 'usuarios']
+    res = list(col.find({}, {"f_bmb":0, "f_fachada":0}).sort("_id", -1).limit(100))
+    for d in res: d['_id'] = str(d['_id'])
+    return jsonify(res)
+
+@app.route('/api/detalle/<tipo>/<id>')
+def api_det(tipo, id):
+    col = db['visitas' if tipo=='visitas' else 'puntos_venta' if tipo=='puntos' else 'usuarios']
+    d = col.find_one({"_id": ObjectId(id)})
+    if d: d['_id'] = str(d['_id'])
+    return jsonify(d)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        u = db['usuarios'].find_one({"usuario": request.form.get('u'), "password": request.form.get('p')})
-        if u: session.update({'user_id': str(u['_id']), 'user_name': u['nombre_completo']}); return redirect('/')
-    return render_template_string(f"<html><head>{CSS}</head><body style='display:flex; justify-content:center; align-items:center; height:100vh;'><div class='card' style='width:300px;'><h3>Nestlé BI</h3><form method='POST'><input type='text' name='u' placeholder='Usuario' class='btn' style='border:1px solid #ccc; color:black;'><input type='password' name='p' placeholder='Clave' class='btn' style='border:1px solid #ccc; color:black;'><button class='btn btn-blue'>Entrar</button></form></div></body></html>")
+        u = usuarios_col.find_one({"usuario": request.form.get('u'), "password": request.form.get('p')})
+        if u: session.update({'user_id': str(u['_id']), 'user_name': u['nombre_completo'], 'role': u.get('rol', 'asesor')}); return redirect('/')
+    return render_template_string(f"<html><head>{CSS}</head><body style='display:flex; justify-content:center; align-items:center; height:100vh;'><div class='card' style='width:300px;'><h3>Nestlé BI</h3><form method='POST'><input type='text' name='u' placeholder='Usuario'><input type='password' name='p' placeholder='Clave'><button class='btn btn-blue'>Entrar</button></form></div></body></html>")
 
 @app.route('/logout')
 def logout(): session.clear(); return redirect('/login')
