@@ -109,11 +109,11 @@ def index():
                             <div style="padding:10px;"><b>${{d.pv}}</b><br><small>${{d.fecha}}</small><br>${{alerta}}
                             <button class="btn-g btn-outline" style="width:100%; margin-top:10px;" onclick="verDetalle('${{d._id}}', ${{d.estado === 'Pendiente'}})">Detalle</button></div>
                         </div>`;
-                    } else if(tipoActual === 'puntos') {{
+                    }} else if(tipoActual === 'puntos') {{
                         html += `<div class="card-mini" style="padding:15px;">
                             <b>${{d['Punto de Venta']}}</b><br><small>BMB: ${{d.BMB || 'N/A'}}</small>
                         </div>`;
-                    } else if(tipoActual === 'usuarios') {{
+                    }} else if(tipoActual === 'usuarios') {{
                         html += `<div class="card-mini" style="padding:15px;">
                             <b>${{d.nombre_completo}}</b><br><small>Usuario: ${{d.usuario}} | Rol: ${{d.rol}}</small>
                             <button class="btn-g btn-outline" style="width:100%; margin-top:10px;" onclick="editarUsuario('${{d._id}}')">Editar</button>
