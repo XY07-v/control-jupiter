@@ -37,8 +37,8 @@ CSS_GERENCIAL = """
     .card-mini { background: white; border-radius: 12px; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 1px solid #efefef; transition: 0.3s; position: relative; }
     .card-mini:hover { transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
     .action-bar { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 10px; align-items: center; }
-    .search-box { flex-grow: 1; min-width: 200px; position: relative; }
-    .search-box input { width: 100%; padding: 10px 15px; border-radius: 20px; border: 1px solid #ccc; font-size: 14px; outline: none; }
+    .search-box { flex-grow: 1; min-width: 200px; margin-top: 15px; }
+    .search-box input { width: 100%; padding: 12px 18px; border-radius: 25px; border: 1px solid #ddd; font-size: 14px; outline: none; box-shadow: inset 0 1px 3px rgba(0,0,0,0.05); }
     .btn-g { padding: 10px 18px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: 0.2s; white-space: nowrap; text-decoration: none; justify-content: center; }
     .btn-primary { background: var(--nestle-blue); color: white; }
     .btn-outline { background: white; color: var(--nestle-blue); border: 1px solid var(--nestle-blue); }
@@ -75,8 +75,8 @@ def index():
                     <button class="btn-g btn-outline" onclick="cargar('puntos')">📍 Consultar Puntos</button>'''}
             </div>
 
-            <div class="search-box" id="search_container" style="margin-top:15px; display:none;">
-                <input type="text" id="buscador" placeholder="Buscar por nombre o BMB..." onkeyup="filtrar()">
+            <div class="search-box" id="search_container" style="display:none;">
+                <input type="text" id="buscador" placeholder="🔍 Buscar por Nombre o BMB..." onkeyup="filtrar()">
             </div>
 
             <div id="grid_data" class="grid-cards"></div>
@@ -92,71 +92,70 @@ def index():
 
         <script>
             let datosActuales = [];
+            let tipoActual = '';
             const miRol = "{rol}";
 
             function openModal(id) {{ document.getElementById(id).style.display='block'; }}
             function closeModal() {{ document.querySelectorAll('.modal').forEach(m=>m.style.display='none'); }}
 
             async function cargar(tipo) {{
+                tipoActual = tipo;
                 const grid = document.getElementById('grid_data');
                 const sBox = document.getElementById('search_container');
                 grid.innerHTML = 'Cargando...';
                 
-                // Mostrar buscador en pestañas específicas
                 const tiposConBusqueda = ['visitas', 'puntos', 'usuarios'];
                 sBox.style.display = tiposConBusqueda.includes(tipo) ? 'block' : 'none';
                 document.getElementById('buscador').value = '';
 
                 const r = await fetch('/api/get/' + tipo);
                 datosActuales = await r.json();
-                renderizar(datosActuales, tipo);
+                renderizar(datosActuales);
             }}
 
-            function renderizar(data, tipo) {{
+            function renderizar(data) {{
                 const grid = document.getElementById('grid_data');
                 let html = '';
                 data.forEach(d => {{
-                    if(tipo === 'validaciones' || tipo === 'visitas') {{
+                    if(tipoActual === 'validaciones' || tipoActual === 'visitas') {{
                         let color = d.estado === 'Pendiente' ? '#FF9500' : '#2E7D32';
                         html += `<div class="card-mini" style="border-left: 5px solid ${{color}};">
                             <div style="margin: 10px 0;"><b>\${{d.pv}}</b><br><small>\${{d.fecha}}</small></div>
-                            <button class="btn-g btn-outline" style="width:100%; padding:6px;" onclick="verDetalleValidar('\${{d._id}}', \${{d.estado === 'Pendiente'}})">Ver</button>
+                            <button class="btn-g btn-outline" style="width:100%; padding:6px;" onclick="verDetalleValidar('\${{d._id}}', \${{d.estado === 'Pendiente'}})">Ver Detalle</button>
                         </div>`;
-                    } else if(tipo === 'puntos') {{
+                    }} else if(tipoActual === 'puntos') {{
                         html += `<div class="card-mini">
                             <div style="margin-bottom:10px;"><b>\${{d['Punto de Venta']}}</b><br><small>BMB: \${{d.BMB || 'N/A'}}</small></div>
                             \${{miRol === 'admin' ? `<button class="btn-g btn-outline" style="width:100%; padding:6px;" onclick="formEdit('puntos', '\${{d._id}}')">Editar</button>` : ''}}
                         </div>`;
-                    } else if(tipo === 'usuarios') {{
+                    }} else if(tipoActual === 'usuarios') {{
                         html += `<div class="card-mini">
                             <div style="margin-bottom:10px;"><b>\${{d.nombre_completo}}</b><br><small>Rol: \${{d.rol}}</small></div>
                             <button class="btn-g btn-outline" style="width:100%; padding:6px;" onclick="formEdit('usuarios', '\${{d._id}}')">Editar</button>
                         </div>`;
                     }}
                 }});
-                grid.innerHTML = html || '<p>Sin resultados.</p>';
+                grid.innerHTML = html || '<p style="grid-column:1/-1; text-align:center; color:gray;">Sin resultados.</p>';
             }}
 
             function filtrar() {{
                 const val = document.getElementById('buscador').value.toLowerCase();
                 const filtrados = datosActuales.filter(d => {{
                     const nombre = (d.pv || d['Punto de Venta'] || d.nombre_completo || '').toLowerCase();
-                    const bmb = (d.BMB || d.bmb_actual || '').toLowerCase();
+                    const bmb = (d.BMB || d.bmb_actual || d.bmb_propuesto || '').toLowerCase();
                     return nombre.includes(val) || bmb.includes(val);
                 }});
-                // Detectar tipo actual por el contenido de los objetos
-                let tipo = datosActuales[0]?.rol ? 'usuarios' : datosActuales[0]?.['Punto de Venta'] ? 'puntos' : 'visitas';
-                renderizar(filtrados, tipo);
+                renderizar(filtrados);
             }}
 
             async function verDetalleValidar(id, conBotones) {{
                 openModal('m_global');
                 const r = await fetch('/api/detalle/visitas/' + id);
                 const d = await r.json();
-                let html = `<h3>Detalle</h3><div style="font-size:13px;"><b>\${{d.pv}}</b><br>BMB: \${{d.bmb_propuesto}}</div>
+                let html = `<h3>Detalle de Visita</h3><div style="font-size:13px; margin-bottom:15px;"><b>\${{d.pv}}</b><br>BMB Propuesto: \${{d.bmb_propuesto}}</div>
                     <img src="\${{d.f_bmb}}" class="img-preview"><img src="\${{d.f_fachada}}" class="img-preview">`;
                 if(conBotones) {{
-                    html += `<div style="display:flex; gap:10px; margin-top:15px;">
+                    html += `<div style="display:flex; gap:10px; margin-top:20px;">
                         <button class="btn-g btn-primary" style="flex:1" onclick="finalizarValidacion('\${{id}}','aprobar')">Aprobar</button>
                         <button class="btn-g btn-danger" style="flex:1" onclick="finalizarValidacion('\${{id}}','rechazar')">Rechazar</button>
                     </div>`;
@@ -169,9 +168,9 @@ def index():
                 openModal('m_global');
                 const r = await fetch(\`/api/detalle/\${{tipo}}/\${{id}}\`);
                 const d = await r.json();
-                let fields = `<h3>Editar</h3><form id="editForm">`;
-                for (let k in d) {{ if(k !== '_id') fields += `<label>\${{k}}</label><input type="text" name="\${{k}}" value="\${{d[k]}}">`; }}
-                fields += `</form><button class="btn-g btn-primary" style="width:100%" onclick="guardarEdicion('\${{tipo}}','\${{id}}')">Guardar</button>
+                let fields = `<h3>Editar Registro</h3><form id="editForm">`;
+                for (let k in d) {{ if(k !== '_id' && typeof d[k] !== 'string' || d[k].length < 500) fields += `<label style="font-size:11px;">\${{k}}</label><input type="text" name="\${{k}}" value="\${{d[k]}}">`; }}
+                fields += `</form><button class="btn-g btn-primary" style="width:100%" onclick="guardarEdicion('\${{tipo}}','\${{id}}')">Guardar Cambios</button>
                           <button class="btn-g btn-outline" style="width:100%; margin-top:10px;" onclick="closeModal()">Cancelar</button>`;
                 document.getElementById('m_body').innerHTML = fields;
             }}
@@ -208,7 +207,6 @@ def index():
 def formulario():
     if 'user_id' not in session: return redirect('/login')
     if request.method == 'POST':
-        # --- Lógica de guardado simplificada ---
         def to_b64(f):
             if not f: return ""
             b = base64.b64encode(f.read()).decode(); f.close()
@@ -235,16 +233,17 @@ def formulario():
     <body onload="navigator.geolocation.getCurrentPosition(p=>document.getElementById('gps').value=p.coords.latitude+','+p.coords.longitude)">
         <div class="container" style="max-width:450px;">
             <div class="card-mini" style="padding:25px;">
-                <h2 style="color:var(--nestle-blue); text-align:center;">Reporte</h2>
+                <h2 style="color:var(--nestle-blue); text-align:center; margin-top:0;">Nuevo Reporte</h2>
                 <form method="POST" enctype="multipart/form-data">
-                    <label>Punto</label><input list="pts" name="pv" id="pv_i" oninput="vincular(this.value)" required>
+                    <label>Punto de Venta</label><input list="pts" name="pv" id="pv_i" oninput="vincular(this.value)" required>
                     <datalist id="pts">{opts}</datalist>
-                    <label>BMB</label><input type="text" name="bmb" id="bmb_i" required>
+                    <label>BMB Detectado</label><input type="text" name="bmb" id="bmb_i" required>
                     <label>Motivo</label><select name="motivo"><option>Visita Exitosa</option><option>Cerrado</option></select>
                     <label>Fecha</label><input type="date" name="fecha" value="{datetime.now().strftime('%Y-%m-%d')}">
+                    <label>Fotos</label>
                     <input type="file" name="f1" accept="image/*" capture="camera"><input type="file" name="f2" accept="image/*" capture="camera">
                     <input type="hidden" name="gps" id="gps">
-                    <button class="btn-g btn-primary" style="width:100%; margin-top:15px;">Enviar</button>
+                    <button class="btn-g btn-primary" style="width:100%; margin-top:15px;">Enviar Reporte</button>
                     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:10px;">
                         <a href="/" class="btn-g btn-outline">Regresar</a>
                         <a href="/logout" class="btn-g btn-danger">Cerrar Sesión</a>
@@ -262,7 +261,7 @@ def formulario():
     </body></html>
     """)
 
-# --- APIs Y LOGIN (Se mantienen igual) ---
+# --- APIs RESTANTES ---
 @app.route('/api/get/<tipo>')
 def api_get(tipo):
     query = {"estado": "Pendiente"} if tipo == 'validaciones' else {"estado": "Aprobado"} if tipo == 'visitas' else {}
