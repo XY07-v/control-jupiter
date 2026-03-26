@@ -123,12 +123,12 @@ def index():
                             <div style="margin: 10px 0;"><b>${{d.pv}}</b><br><small>${{d.fecha}}</small></div>
                             <button class="btn-g btn-outline" style="width:100%; padding:6px;" onclick="verDetalleValidar('${{d._id}}', ${{d.estado === 'Pendiente'}})">Ver Detalle</button>
                         </div>`;
-                    } else if(tipoActual === 'puntos') {{
+                    } else if(tipoActual === 'puntos') {
                         html += `<div class="card-mini">
                             <div style="margin-bottom:10px;"><b>${{d['Punto de Venta']}}</b><br><small>BMB: ${{d.BMB || 'N/A'}}</small></div>
                             ${{miRol === 'admin' ? `<button class="btn-g btn-outline" style="width:100%; padding:6px;" onclick="formEdit('puntos', '${{d._id}}')">Editar</button>` : ''}}
                         </div>`;
-                    } else if(tipoActual === 'usuarios') {{
+                    } else if(tipoActual === 'usuarios') {
                         html += `<div class="card-mini">
                             <div style="margin-bottom:10px;"><b>${{d.nombre_completo}}</b><br><small>Rol: ${{d.rol}}</small></div>
                             <button class="btn-g btn-outline" style="width:100%; padding:6px;" onclick="formEdit('usuarios', '${{d._id}}')">Editar</button>
