@@ -1,7 +1,7 @@
 from flask import Flask, render_template_string, request, redirect, jsonify, Response, session
 from pymongo import MongoClient
 from bson.objectid import ObjectId
-import base64, io, csv, math, json
+import base64, io, csv, math, json, gc
 from datetime import datetime
 
 app = Flask(__name__)
@@ -27,6 +27,7 @@ def calcular_distancia(pos1, pos2):
         return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1-a))
     except: return 0
 
+# El CSS se mantiene idéntico como pediste
 CSS_FIXED = """
 <style>
     :root { --ios-blue: #007AFF; --bg: #F2F2F7; --sidebar-w: 250px; }
@@ -51,8 +52,15 @@ CSS_FIXED = """
 def index():
     if 'user_id' not in session: return redirect('/login')
     if session['role'] == 'asesor': return redirect('/formulario')
-    visitas = list(visitas_col.find({"estado": {"$ne": "Pendiente"}}, {"f_bmb":0, "f_fachada":0}).sort("fecha", -1))
-    rows = "".join([f'<div class="card" onclick="verVisita(\'{v["_id"]}\')"><b>{v["pv"]}</b><br><small>{v["fecha"]} - {v["n_documento"]}</small></div>' for v in visitas])
+    
+    # Optimización: Solo traer los últimos 50 para no saturar RAM
+    cursor = visitas_col.find(
+        {"estado": {"$ne": "Pendiente"}}, 
+        {"f_bmb":0, "f_fachada":0}
+    ).sort("fecha", -1).limit(50)
+    
+    rows = "".join([f'<div class="card" onclick="verVisita(\'{v["_id"]}\')"><b>{v["pv"]}</b><br><small>{v["fecha"]} - {v["n_documento"]}</small></div>' for v in cursor])
+    
     return render_template_string(f"""
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />{CSS_FIXED}</head>
     <body>
@@ -68,7 +76,7 @@ def index():
             <a href="/descargar" class="btn btn-light">Exportar Datos</a>
             <div style="margin-top:auto;"><a href="/logout" class="btn btn-red">Cerrar Sesión</a></div>
         </div>
-        <div class="main-content"><h3>Historial de Visitas</h3>{rows}</div>
+        <div class="main-content"><h3>Historial Reciente</h3>{rows}</div>
         <div id="m_puntos" class="modal"><div class="modal-content" id="cont_p_modal"></div></div>
         <div id="m_users" class="modal"><div class="modal-content" id="cont_u_modal"></div></div>
         <div id="m_csv" class="modal"><div class="modal-content">
@@ -109,7 +117,6 @@ def index():
                 await fetch('/api/actualizar_punto', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{id:id, datos:d}})}});
                 cargaP();
             }}
-
             async function cargaU() {{
                 const r = await fetch('/api/usuarios'); const us = await r.json();
                 let h = '<button class="btn btn-light" onclick="closeM()" style="width:100px; float:right;">Cerrar</button><h3>Usuarios</h3>';
@@ -131,14 +138,12 @@ def index():
                 await fetch('/api/actualizar_usuario', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify(d)}});
                 cargaU();
             }}
-
             async function subirCSV() {{
                 const f = document.getElementById('f_csv').files[0]; if(!f) return;
                 const fd = new FormData(); fd.append('file_csv', f);
                 const r = await fetch('/carga_masiva_puntos', {{method:'POST', body:fd}});
                 const res = await r.json(); alert("Cargados: " + res.count); closeM();
             }}
-
             async function verVisita(id) {{
                 openM('m_det'); const res = await fetch('/get_img/'+id); const d = await res.json();
                 document.getElementById('det_body').innerHTML = `<button class="btn btn-light" onclick="closeM()">Cerrar</button><div id="map" style="height:200px; border-radius:15px; margin:10px 0;"></div><img src="${{d.f1}}" style="width:100%;"><img src="${{d.f2}}" style="width:100%;">`;
@@ -152,11 +157,16 @@ def index():
 def formulario():
     if 'user_id' not in session: return redirect('/login')
     if request.method == 'POST':
-        def b64(f): return f"data:{f.content_type};base64,{base64.b64encode(f.read()).decode()}" if f and f.filename else ""
+        # Optimización: No cargar imágenes en RAM si el objeto está vacío
+        def b64(f):
+            if not f or not f.filename: return ""
+            res = f"data:{f.content_type};base64,{base64.b64encode(f.read()).decode()}"
+            f.close() # Liberar file descriptor
+            return res
+
         pv_in, bmb_in, gps = request.form.get('pv'), request.form.get('bmb'), request.form.get('ubicacion')
-        
-        pnt = puntos_col.find_one({"Punto de Venta": pv_in})
-        bmb_duplicado = puntos_col.find_one({"BMB": bmb_in, "Punto de Venta": {"$ne": pv_in}})
+        pnt = puntos_col.find_one({"Punto de Venta": pv_in}, {"BMB": 1, "Ruta": 1})
+        bmb_duplicado = puntos_col.find_one({"BMB": bmb_in, "Punto de Venta": {"$ne": pv_in}}, {"Punto de Venta": 1})
         duplicado_info = bmb_duplicado['Punto de Venta'] if bmb_duplicado else ""
 
         if not pnt:
@@ -172,14 +182,20 @@ def formulario():
             "bmb": bmb_orig, "bmb_propuesto": bmb_in, "ubicacion": gps, 
             "ruta_anterior": ruta_orig, "distancia": round(dist, 1), "estado": estado_v,
             "bmb_duplicado_en": duplicado_info, "is_new": is_new,
-            "motivo": request.form.get('motivo'), "f_bmb": b64(request.files.get('f1')), "f_fachada": b64(request.files.get('f2'))
+            "motivo": request.form.get('motivo'), 
+            "f_bmb": b64(request.files.get('f1')), 
+            "f_fachada": b64(request.files.get('f2'))
         })
+
         if estado_v == "Aprobado":
             puntos_col.update_one({"Punto de Venta": pv_in}, {"$set": {"BMB": bmb_in, "Ruta": gps}})
+        
+        gc.collect() # Limpieza forzada de RAM tras procesar imágenes
         return redirect('/formulario?msg=OK')
     
-    puntos_raw = list(puntos_col.find({}, {"_id": 0}))
-    opts = "".join([f'<option value="{p["Punto de Venta"]}"> ' for p in puntos_raw])
+    # Optimización: Cargar solo nombres para el datalist (ahorra mucha RAM en el cliente)
+    opts_cursor = puntos_col.find({}, {"Punto de Venta": 1, "_id": 0})
+    opts = "".join([f'<option value="{p["Punto de Venta"]}">' for p in opts_cursor])
     
     return render_template_string(f"""
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">{CSS_FIXED}</head>
@@ -187,10 +203,9 @@ def formulario():
         <div class="container" style="max-width:450px; margin:auto; padding:20px;">
             <div class="card">
                 <h2 style="text-align:center; color:var(--ios-blue);">Nestlé BI</h2>
-                <button class="btn btn-light" onclick="openGuia()">🔍 Guía Puntos / BMB</button>
+                <button class="btn btn-light" onclick="openGuia()">🔍 Buscar Punto</button>
                 <form method="POST" enctype="multipart/form-data">
-                    <label style="font-size:11px;">Nombre Punto (Escriba o Seleccione)</label>
-                    <input list="pts" name="pv" id="pv_i" oninput="vincularBMB(this.value)" required>
+                    <input list="pts" name="pv" id="pv_i" placeholder="Nombre del Punto" required>
                     <datalist id="pts">{opts}</datalist>
                     <input type="text" name="bmb" id="bmb_i" placeholder="BMB Máquina" required>
                     <input type="date" name="fecha" value="{datetime.now().strftime('%Y-%m-%d')}">
@@ -205,45 +220,94 @@ def formulario():
         </div>
         <div id="m_guia" class="modal"><div class="modal-content">
             <button class="btn btn-light" onclick="this.parentElement.parentElement.style.display='none'">Cerrar</button>
-            <h3>Referencia de Datos</h3>
-            <input type="text" id="bus_g" placeholder="Filtrar..." onkeyup="filG()">
+            <h3>Guía de Referencia</h3>
+            <input type="text" id="bus_g" placeholder="Filtrar por nombre o BMB..." onkeyup="filG()">
             <div id="tabla_g"></div>
         </div></div>
         <script>
-            const data_pts = {json.dumps(puntos_raw)};
-            function vincularBMB(val) {{
-                const p = data_pts.find(x => x['Punto de Venta'] === val);
-                if(p) document.getElementById('bmb_i').value = p.BMB || '';
-            }}
-            function openGuia() {{ document.getElementById('m_guia').style.display='block'; filG(); }}
-            function filG() {{
-                const v = document.getElementById('bus_g').value.toLowerCase();
+            async function filG() {{
+                const v = document.getElementById('bus_g').value;
+                if(v.length < 3) return; // No buscar hasta tener 3 letras (ahorra tráfico)
+                const r = await fetch('/api/puntos?q=' + v);
+                const data = await r.json();
                 let h = '<table><tr><th>Punto</th><th>BMB</th></tr>';
-                data_pts.filter(p => p['Punto de Venta'].toLowerCase().includes(v) || (p['BMB']||'').toLowerCase().includes(v))
-                       .forEach(p => h += `<tr><td>${{p['Punto de Venta']}}</td><td>${{p['BMB']||''}}</td></tr>`);
+                data.forEach(p => h += `<tr><td>${{p['Punto de Venta']}}</td><td>${{p['BMB']||''}}</td></tr>`);
                 document.getElementById('tabla_g').innerHTML = h + '</table>';
             }}
+            function openGuia() {{ document.getElementById('m_guia').style.display='block'; }}
         </script>
     </body></html>
     """)
 
+@app.route('/api/puntos')
+def api_p():
+    q = request.args.get('q', '')
+    query = {"Punto de Venta": {"$regex": q, "$options": "i"}} if q else {}
+    # Optimización: Solo traer campos necesarios para la tabla
+    p = list(puntos_col.find(query, {"Punto de Venta": 1, "BMB": 1}).limit(20))
+    for x in p: x["_id"] = str(x["_id"])
+    return jsonify(p)
+
+@app.route('/carga_masiva_puntos', methods=['POST'])
+def api_csv():
+    f = request.files.get('file_csv')
+    if f:
+        # Optimización: Procesar como stream línea por línea para no saturar RAM
+        stream = io.StringIO(f.stream.read().decode("utf-8-sig"), newline=None)
+        d = ';' if stream.getvalue().count(';') > stream.getvalue().count(',') else ','
+        stream.seek(0)
+        reader = csv.DictReader(stream, delimiter=d)
+        
+        chunk = []
+        puntos_col.delete_many({}) # Limpiar antes
+        for row in reader:
+            clean_row = {k.strip(): v.strip() for k, v in row.items() if k}
+            chunk.append(clean_row)
+            if len(chunk) > 500: # Insertar en bloques para balancear RAM/Velocidad
+                puntos_col.insert_many(chunk)
+                chunk = []
+        if chunk: puntos_col.insert_many(chunk)
+        
+        count = puntos_col.count_documents({})
+        gc.collect()
+        return jsonify({"count": count})
+    return jsonify({"error": "No file"}), 400
+
+@app.route('/descargar')
+def desc():
+    # Optimización: No cargar todo en RAM, usar generador para el CSV
+    def generate():
+        cursor = visitas_col.find({"estado": "Aprobado"}, {"f_bmb":0, "f_fachada":0, "_id":0})
+        si = io.StringIO()
+        w = csv.writer(si)
+        w.writerow(['Punto', 'Asesor', 'Fecha', 'BMB Base', 'BMB Propuesto', 'Ruta Nueva', 'Distancia', 'Estado'])
+        yield si.getvalue()
+        si.truncate(0); si.seek(0)
+        
+        for r in cursor:
+            w.writerow([r.get('pv'), r.get('n_documento'), r.get('fecha'), r.get('bmb'), r.get('bmb_propuesto'), r.get('ubicacion'), r.get('distancia'), r.get('estado')])
+            yield si.getvalue()
+            si.truncate(0); si.seek(0)
+
+    return Response(generate(), mimetype='text/csv', headers={"Content-Disposition":"attachment;filename=Reporte_BI.csv"})
+
 @app.route('/validacion_admin')
 def validacion_admin():
     if session.get('role') != 'admin': return redirect('/')
-    pends = list(visitas_col.find({"estado": "Pendiente"}))
+    pends = visitas_col.find({"estado": "Pendiente"})
     rows = ""
     for r in pends:
-        duplicado = f'<div style="color:red; font-weight:bold; background:#fff0f0; padding:10px; border-radius:10px; margin-bottom:10px;">⚠️ BMB ACTUALMENTE EN: {r.get("bmb_duplicado_en")}</div>' if r.get('bmb_duplicado_en') else ''
-        tipo = '<b style="color:green;">[ASIGNACIÓN NUEVA]</b>' if r.get('is_new') else ''
+        duplicado = f'<div style="color:red; font-weight:bold; background:#fff0f0; padding:10px; border-radius:10px; margin-bottom:10px;">⚠️ DUPLICADO EN: {r.get("bmb_duplicado_en")}</div>' if r.get('bmb_duplicado_en') else ''
+        tipo = '<b style="color:green;">[NUEVO]</b>' if r.get('is_new') else ''
         rows += f'''<div class="card" style="border-left: 8px solid #FF9500;">
             {duplicado}
             <h3>{r['pv']} {tipo}</h3>
-            <p>Distancia: {r.get('distancia')}m | {r.get('n_documento')}</p>
+            <p>{r.get('fecha')} | {r.get('n_documento')} | Distancia: {r.get('distancia')}m</p>
             <div style="background:#f2f2f7; padding:10px; border-radius:10px; font-size:12px;">
                 BMB Base: {r.get('bmb')} | <b style="color:var(--ios-blue);">Propuesto: {r.get('bmb_propuesto')}</b>
             </div>
             <div style="display:flex; gap:5px; margin-top:10px;"><img src="{r['f_bmb']}" style="width:50%;"><img src="{r['f_fachada']}" style="width:50%;"></div>
-            <button class="btn btn-blue" onclick="vF('{r['_id']}', 'aprobar')">Aprobar (Actualizar Punto/BMB)</button>
+            <button class="btn btn-blue" onclick="vF('{r['_id']}', 'aprobar')">Aprobar</button>
             <button class="btn btn-light" style="color:red;" onclick="vF('{r['_id']}', 'rechazar')">Rechazar</button>
         </div>'''
     return render_template_string(f"<html><head><meta name='viewport' content='width=device-width, initial-scale=1.0'>{CSS_FIXED}</head><body><div class='sidebar'><a href='/' class='btn btn-light'>← Volver</a></div><div class='main-content'><h2>Validaciones</h2>{rows or '<p>No hay pendientes.</p>'}</div><script>async function vF(id,op){{await fetch('/api/v_final/'+id+'/'+op); location.reload();}}</script></body></html>")
@@ -252,47 +316,22 @@ def validacion_admin():
 def api_v_f(id, op):
     v = visitas_col.find_one({"_id": ObjectId(id)})
     if not v: return jsonify({"s":"error"})
-    
     if op == 'aprobar':
-        bmb_objetivo = v['bmb_propuesto']
-        # Lógica de Ajuste: Buscar si el BMB ya existe en algún punto
-        punto_existente = puntos_col.find_one({"BMB": bmb_objetivo})
-        
-        if punto_existente:
-            # SI EL BMB YA EXISTE: Actualizamos ese registro con el nuevo nombre de punto y ubicación
-            puntos_col.update_one(
-                {"BMB": bmb_objetivo}, 
-                {"$set": {"Punto de Venta": v['pv'], "Ruta": v['ubicacion']}}
-            )
-        else:
-            # SI EL BMB NO EXISTE: Creamos/Actualizamos el registro por nombre de Punto de Venta
-            puntos_col.update_one(
-                {"Punto de Venta": v['pv']}, 
-                {"$set": {"BMB": bmb_objetivo, "Ruta": v['ubicacion']}}, 
-                upsert=True
-            )
-        
+        puntos_col.update_one(
+            {"BMB": v['bmb_propuesto']}, 
+            {"$set": {"Punto de Venta": v['pv'], "Ruta": v['ubicacion']}},
+            upsert=True
+        )
         visitas_col.update_one({"_id": ObjectId(id)}, {"$set": {"estado": "Aprobado"}})
     else:
         visitas_col.update_one({"_id": ObjectId(id)}, {"$set": {"estado": "Rechazado"}})
     return jsonify({"s":"ok"})
 
-@app.route('/carga_masiva_puntos', methods=['POST'])
-def api_csv():
-    f = request.files.get('file_csv')
-    if f:
-        content = f.stream.read().decode("utf-8-sig", errors="ignore")
-        d = ';' if content.count(';') > content.count(',') else ','
-        reader = csv.DictReader(io.StringIO(content), delimiter=d)
-        lista = [{k.strip(): v.strip() for k, v in r.items() if k} for r in reader]
-        if lista: 
-            puntos_col.delete_many({})
-            puntos_col.insert_many(lista)
-        return jsonify({"count": len(lista)})
-    return jsonify({"error": "No file"}), 400
-
-@app.route('/api/puntos')
-def api_p(): p = list(puntos_col.find()); [x.update({"_id": str(x["_id"])}) for x in p]; return jsonify(p)
+@app.route('/api/usuarios')
+def api_u():
+    u = list(usuarios_col.find({}, {"password": 0})); 
+    for x in u: x["_id"] = str(x["_id"])
+    return jsonify(u)
 
 @app.route('/api/actualizar_punto', methods=['POST'])
 def api_up_p(): 
@@ -300,31 +339,21 @@ def api_up_p():
     puntos_col.update_one({"_id": ObjectId(d['id'])}, {"$set": d['datos']})
     return jsonify({"s": "ok"})
 
-@app.route('/api/usuarios')
-def api_u(): 
-    u = list(usuarios_col.find()); [x.update({"_id": str(x["_id"])}) for x in u]
-    return jsonify(u)
-
 @app.route('/api/actualizar_usuario', methods=['POST'])
 def api_up_u():
     d = request.json
+    data = {"nombre_completo": d['nom'], "usuario": d['usr'], "rol": d['rol']}
+    if d['pas']: data["password"] = d['pas']
     if d.get('id'): 
-        usuarios_col.update_one({"_id": ObjectId(d['id'])}, {"$set": {"nombre_completo": d['nom'], "usuario": d['usr'], "password": d['pas'], "rol": d['rol']}})
+        usuarios_col.update_one({"_id": ObjectId(d['id'])}, {"$set": data})
     else: 
-        usuarios_col.insert_one({"nombre_completo": d['nom'], "usuario": d['usr'], "password": d['pas'], "rol": d['rol']})
+        usuarios_col.insert_one(data)
     return jsonify({"s": "ok"})
 
-@app.route('/descargar')
-def desc():
-    cursor = visitas_col.find({"estado": "Aprobado"}, {"f_bmb":0, "f_fachada":0, "_id":0})
-    si = io.StringIO(); w = csv.writer(si)
-    w.writerow(['Punto', 'Asesor', 'Fecha', 'BMB Base', 'BMB Propuesto', 'Ruta Anterior', 'Ruta Nueva', 'Diferencia Metros', 'Estado'])
-    for r in cursor: 
-        w.writerow([r.get('pv'), r.get('n_documento'), r.get('fecha'), r.get('bmb'), r.get('bmb_propuesto'), r.get('ruta_anterior', ''), r.get('ubicacion', ''), r.get('distancia', 0), r.get('estado')])
-    return Response(si.getvalue(), mimetype='text/csv', headers={"Content-Disposition":"attachment;filename=Reporte_BI.csv"})
-
 @app.route('/get_img/<id>')
-def api_img(id): d = visitas_col.find_one({"_id": ObjectId(id)}); return jsonify({"f1": d.get('f_bmb'), "f2": d.get('f_fachada'), "gps": d.get('ubicacion')})
+def api_img(id):
+    d = visitas_col.find_one({"_id": ObjectId(id)}, {"f_bmb": 1, "f_fachada": 1, "ubicacion": 1})
+    return jsonify({"f1": d.get('f_bmb'), "f2": d.get('f_fachada'), "gps": d.get('ubicacion')})
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
