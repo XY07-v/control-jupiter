@@ -105,8 +105,7 @@ def index():
                 const sBox = document.getElementById('search_container');
                 grid.innerHTML = 'Cargando...';
                 
-                const tiposConBusqueda = ['visitas', 'puntos', 'usuarios'];
-                sBox.style.display = tiposConBusqueda.includes(tipo) ? 'block' : 'none';
+                sBox.style.display = ['visitas', 'puntos', 'usuarios'].includes(tipo) ? 'block' : 'none';
                 document.getElementById('buscador').value = '';
 
                 const r = await fetch('/api/get/' + tipo);
@@ -141,24 +140,18 @@ def index():
 
             function filtrar() {{
                 const val = document.getElementById('buscador').value.toLowerCase();
-                
-                // Si estamos en Puntos, usamos búsqueda en servidor (Debounce)
                 if(tipoActual === 'puntos') {{
                     clearTimeout(timerBusqueda);
                     timerBusqueda = setTimeout(async () => {{
-                        if(val.length < 3 && val.length > 0) return;
                         const r = await fetch(`/api/search/puntos?q=${{val}}`);
-                        const data = await r.json();
-                        renderizar(data);
+                        renderizar(await r.json());
                     }}, 400);
                     return;
                 }}
-
-                // Para lo demás, búsqueda local
                 const filtrados = datosActuales.filter(d => {{
-                    const nombre = (d.pv || d['Punto de Venta'] || d.nombre_completo || '').toLowerCase();
-                    const bmb = (d.BMB || d.bmb_actual || '').toLowerCase();
-                    return nombre.includes(val) || bmb.includes(val);
+                    const n = (d.pv || d['Punto de Venta'] || d.nombre_completo || '').toLowerCase();
+                    const b = (d.BMB || d.bmb_actual || '').toLowerCase();
+                    return n.includes(val) || b.includes(val);
                 }});
                 renderizar(filtrados);
             }}
@@ -247,7 +240,7 @@ def formulario():
             <div class="card-mini" style="padding:25px;">
                 <h2 style="color:var(--nestle-blue); text-align:center; margin-top:0;">Nuevo Reporte</h2>
                 <form method="POST" enctype="multipart/form-data">
-                    <label>Punto de Venta</label><input list="pts" name="pv" id="pv_i" oninput="buscarDinamico(this.value)" required>
+                    <label>Punto de Venta</label><input list="pts" name="pv" id="pv_i" oninput="buscarPV(this.value)" required>
                     <datalist id="pts"></datalist>
                     <label>BMB Detectado</label><input type="text" name="bmb" id="bmb_i" required>
                     <label>Motivo</label><select name="motivo"><option>Visita Exitosa</option><option>Cerrado</option></select>
@@ -265,14 +258,13 @@ def formulario():
         </div>
         <script>
             let tmo;
-            async function buscarDinamico(val) {{
+            async function buscarPV(val) {{
                 if(val.length < 3) return;
                 clearTimeout(tmo);
                 tmo = setTimeout(async () => {{
                     const r = await fetch(`/api/search/puntos?q=${{val}}`);
                     const data = await r.json();
-                    const dl = document.getElementById('pts');
-                    dl.innerHTML = data.map(p => `<option value="${{p['Punto de Venta']}}">`).join('');
+                    document.getElementById('pts').innerHTML = data.map(p => `<option value="${{p['Punto de Venta']}}">`).join('');
                     const found = data.find(x => x['Punto de Venta'] === val);
                     if(found) document.getElementById('bmb_i').value = found.BMB || '';
                 }}, 300);
@@ -284,8 +276,7 @@ def formulario():
 @app.route('/api/get/<tipo>')
 def api_get(tipo):
     query = {"estado": "Pendiente"} if tipo == 'validaciones' else {"estado": "Aprobado"} if tipo == 'visitas' else {}
-    col = db['visitas' if (tipo=='visitas' or tipo=='validaciones') else 'puntos_venta' if tipo=='puntos' else 'usuarios']
-    # Limitamos a 50 para no sobrecargar el inicio
+    col = db['visitas' if tipo in ['visitas','validaciones'] else 'puntos_venta' if tipo=='puntos' else 'usuarios']
     res = list(col.find(query, {"f_bmb":0, "f_fachada":0}).sort("_id", -1).limit(50))
     for d in res: d['_id'] = str(d['_id'])
     return jsonify(res)
@@ -293,16 +284,8 @@ def api_get(tipo):
 @app.route('/api/search/puntos')
 def api_search_puntos():
     q = request.args.get('q', '').strip()
-    if not q:
-        res = list(puntos_col.find({}, {"f_bmb":0, "f_fachada":0}).limit(50))
-    else:
-        # Búsqueda por texto en Punto de Venta o BMB
-        query = {"$or": [
-            {"Punto de Venta": {"$regex": q, "$options": "i"}},
-            {"BMB": {"$regex": q, "$options": "i"}}
-        ]}
-        res = list(puntos_col.find(query, {"f_bmb":0, "f_fachada":0}).limit(100))
-    
+    query = {"$or": [{"Punto de Venta": {"$regex": q, "$options": "i"}}, {"BMB": {"$regex": q, "$options": "i"}}]} if q else {}
+    res = list(puntos_col.find(query, {"f_bmb":0, "f_fachada":0}).limit(100))
     for d in res: d['_id'] = str(d['_id'])
     return jsonify(res)
 
