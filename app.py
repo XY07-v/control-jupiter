@@ -43,6 +43,7 @@ CSS_GERENCIAL = """
     .btn-primary { background: var(--nestle-blue); color: white; }
     .btn-outline { background: white; color: var(--nestle-blue); border: 1px solid var(--nestle-blue); }
     .btn-danger { background: #FF3B30; color: white; }
+    .badge-motivo { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; margin-top: 5px; background: #FFF3E0; color: #E65100; font-weight: bold; }
     .modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); z-index: 1000; }
     .modal-content { background: white; margin: 5% auto; width: 95%; max-width: 600px; border-radius: 16px; padding: 25px; max-height: 85vh; overflow-y: auto; }
     input, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; box-sizing: border-box; }
@@ -70,10 +71,10 @@ def index():
                     <button class="btn-g btn-outline" onclick="cargar('visitas')">📋 Historial</button>
                     <button class="btn-g btn-outline" onclick="cargar('puntos')">📍 Puntos</button>
                     <button class="btn-g btn-outline" onclick="cargar('usuarios')">👥 Usuarios</button>
-                    <a href="/exportar_puntos" class="btn-g btn-outline">📤 Exportar</a>''' if rol == 'admin' else 
+                    <a href="/exportar_reportes" class="btn-g btn-outline">📤 Exportar</a>''' if rol == 'admin' else 
                    '''<a href="/formulario" class="btn-g btn-primary">📝 Nuevo Reporte</a>
                     <button class="btn-g btn-outline" onclick="cargar('puntos')">📍 Consultar Puntos</button>
-                    <a href="/exportar_puntos" class="btn-g btn-outline">📤 Exportar</a>'''}
+                    <a href="/exportar_reportes" class="btn-g btn-outline">📤 Exportar</a>'''}
             </div>
 
             <div class="search-box" id="search_container" style="display:none;">
@@ -114,8 +115,9 @@ def index():
                 data.forEach(d => {{
                     if(tipoActual === 'validaciones' || tipoActual === 'visitas') {{
                         let color = d.estado === 'Pendiente' ? '#FF9500' : '#2E7D32';
+                        let motivoLabel = d.motivo_alerta ? `<span class="badge-motivo">🚨 ${{d.motivo_alerta}}</span>` : '';
                         html += `<div class="card-mini" style="border-left: 5px solid ${{color}};">
-                            <div style="margin: 10px 0;"><b>${{d.pv}}</b><br><small>${{d.fecha}}</small></div>
+                            <div style="margin: 10px 0;"><b>${{d.pv}}</b><br><small>${{d.fecha}}</small><br>${{motivoLabel}}</div>
                             <button class="btn-g btn-outline" style="width:100%; padding:6px;" onclick="verDetalleValidar('${{d._id}}', ${{d.estado === 'Pendiente'}})">Ver Detalle</button>
                         </div>`;
                     }} else if(tipoActual === 'puntos') {{
@@ -155,7 +157,7 @@ def index():
                 openModal('m_global');
                 const r = await fetch('/api/detalle/visitas/' + id);
                 const d = await r.json();
-                let html = `<h3>Detalle de Visita</h3><div style="font-size:13px; margin-bottom:15px;"><b>${{d.pv}}</b><br>BMB Propuesto: ${{d.bmb_propuesto}}</div>
+                let html = `<h3>Detalle de Visita</h3><div style="font-size:13px; margin-bottom:15px;"><b>${{d.pv}}</b><br>BMB Propuesto: ${{d.bmb_propuesto}}<br>Alerta: ${{d.motivo_alerta || 'Ninguna'}}</div>
                     <img src="${{d.f_bmb}}" class="img-preview"><img src="${{d.f_fachada}}" class="img-preview">`;
                 if(conBotones) {{
                     html += `<div style="display:flex; gap:10px; margin-top:20px;">
@@ -208,13 +210,25 @@ def formulario():
             return f"data:image/jpeg;base64,{b}"
         pv_in, bmb_in, gps = request.form.get('pv'), request.form.get('bmb'), request.form.get('gps')
         pnt = puntos_col.find_one({"Punto de Venta": pv_in})
-        bmb_base = pnt.get('BMB', "NUEVO") if pnt else "NUEVO"
-        dist = calcular_distancia(gps, pnt.get('Ruta')) if pnt else 0
-        estado = "Pendiente" if (bmb_in != bmb_base or dist > 100) else "Aprobado"
+        
+        # LÓGICA DE MOTIVO DE ALERTA
+        motivo_alerta = ""
+        if not pnt: 
+            motivo_alerta = "Nuevo Punto"
+            bmb_base = "NUEVO"
+        else:
+            bmb_base = pnt.get('BMB', "NUEVO")
+            dist = calcular_distancia(gps, pnt.get('Ruta'))
+            if bmb_in != bmb_base: motivo_alerta = "Cambio de BMB"
+            if dist > 100: motivo_alerta = (" / " if motivo_alerta else "") + "Fuera de Rango"
+
+        estado = "Pendiente" if motivo_alerta else "Aprobado"
+        
         visitas_col.insert_one({
             "pv": pv_in, "bmb_actual": bmb_base, "bmb_propuesto": bmb_in,
             "fecha": request.form.get('fecha'), "n_documento": session.get('user_name'),
             "motivo": request.form.get('motivo'), "ubicacion": gps, "estado": estado,
+            "motivo_alerta": motivo_alerta,
             "f_bmb": to_b64(request.files.get('f1')), "f_fachada": to_b64(request.files.get('f2'))
         })
         if estado == "Aprobado": puntos_col.update_one({"Punto de Venta": pv_in}, {"$set": {"BMB": bmb_in, "Ruta": gps}}, upsert=True)
@@ -260,17 +274,18 @@ def formulario():
     </body></html>
     """)
 
-@app.route('/exportar_puntos')
-def exportar_puntos():
+@app.route('/exportar_reportes')
+def exportar_reportes():
     if 'user_id' not in session: return redirect('/login')
     si = io.StringIO()
-    cw = csv.writer(si)
-    puntos = list(puntos_col.find({}, {"_id": 0}))
-    if puntos:
-        cw.writerow(puntos[0].keys())
-        for p in puntos: cw.writerow(p.values())
+    cw = csv.writer(si, delimiter=';')
+    # Traemos todos los registros de visitas con su estado y motivo de alerta
+    reportes = list(visitas_col.find({}, {"f_bmb": 0, "f_fachada": 0, "_id": 0}))
+    if reportes:
+        cw.writerow(reportes[0].keys())
+        for r in reportes: cw.writerow(r.values())
     
-    return Response(si.getvalue(), mimetype="text/csv", headers={"Content-disposition": f"attachment; filename=puntos_venta_{datetime.now().strftime('%Y%m%d')}.csv"})
+    return Response(si.getvalue(), mimetype="text/csv", headers={"Content-disposition": f"attachment; filename=historial_reportes_{datetime.now().strftime('%Y%m%d')}.csv"})
 
 @app.route('/api/get/<tipo>')
 def api_get(tipo):
