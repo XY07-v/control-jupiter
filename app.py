@@ -101,12 +101,12 @@ def index():
                             ${{d.motivo_alerta ? `<span class="badge-alerta">${{d.motivo_alerta}}</span>` : ''}}
                             <button class="btn-g btn-outline" style="width:100%;margin-top:10px" onclick="verDet('${{d._id}}', ${{d.estado=='Pendiente'}})">Detalle</button>
                         </div>`;
-                    }} else if(tipoAct==='puntos') {{
+                    } else if(tipoAct==='puntos') {{
                         h += `<div class="card-mini"><b>${{d['Punto de Venta']}}</b><br><small>BMB: ${{d.BMB}}</small></div>`;
-                    }} else if(tipoAct==='usuarios') {{
+                    } else if(tipoAct==='usuarios') {{
                         h += `<div class="card-mini"><b>${{d.nombre_completo}}</b><br><small>${{d.rol}}</small>
                         <button class="btn-g btn-outline" style="width:100%;margin-top:10px" onclick="editUser('${{d._id}}')">Editar</button></div>`;
-                    }}
+                    }
                 }});
                 document.getElementById('grid').innerHTML = h || 'No hay datos';
             }}
