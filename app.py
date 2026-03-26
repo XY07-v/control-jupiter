@@ -5,7 +5,7 @@ import base64, io, csv, math, json, gc
 from datetime import datetime
 
 app = Flask(__name__)
-app.secret_key = "nestle_bi_poc_2026_v15_stable"
+app.secret_key = "nestle_bi_poc_2026_v15_final"
 
 # --- CONEXIÓN MONGODB ---
 MONGO_URI = "mongodb+srv://control-jupiter:control-jupiter1234@cluster0.dtureen.mongodb.net/NestleDB?retryWrites=true&w=majority"
@@ -52,9 +52,9 @@ def index():
     if 'user_id' not in session: return redirect('/login')
     if session.get('role') == 'asesor': return redirect('/formulario')
     
-    # Se excluyen las fotos de la consulta para no saturar la RAM
-    visitas = list(visitas_col.find({"estado": {"$ne": "Pendiente"}}, {"f_bmb":0, "f_fachada":0}).sort("fecha", -1).limit(40))
-    rows = "".join([f'<div class="card"><b>{v.get("pv")}</b><br><small>{v.get("fecha")} - {v.get("n_documento")}</small><button class="btn btn-light" style="margin-top:10px;" onclick="verVisita(\'{v["_id"]}\')">Consultar Imágenes</button></div>' for v in visitas])
+    # Excluimos fotos para que la carga sea instantánea y no sature la RAM
+    visitas = list(visitas_col.find({"estado": {"$ne": "Pendiente"}}, {"f_bmb":0, "f_fachada":0}).sort("fecha", -1).limit(50))
+    rows = "".join([f'<div class="card"><b>{v.get("pv")}</b><br><small>{v.get("fecha")} - {v.get("n_documento")}</small><button class="btn btn-light" style="margin-top:10px;" onclick="verVisita(\'{v["_id"]}\')">Ver Detalles</button></div>' for v in visitas])
     
     return render_template_string(f"""
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">{CSS_FIXED}</head>
@@ -65,9 +65,9 @@ def index():
             <hr style="width:100%; border:0.5px solid #eee; margin:15px 0;">
             <a href="/formulario" class="btn btn-blue">Nuevo Reporte</a>
             <a href="/validacion_admin" class="btn btn-light" style="color:#FF9500;">Pendientes</a>
-            <div style="margin-top:auto;"><a href="/logout" class="btn btn-red">Cerrar Sesión</a></div>
+            <a href="/logout" class="btn btn-red" style="margin-top:auto;">Cerrar Sesión</a>
         </div>
-        <div class="main-content"><h3>Historial Reciente</h3>{rows or '<p>No hay registros.</p>'}</div>
+        <div class="main-content"><h3>Historial (Últimos 50)</h3>{rows or '<p>No hay registros.</p>'}</div>
         <div id="m_det" class="modal"><div class="modal-content" id="det_body"></div></div>
         <script>
             async function verVisita(id) {{
@@ -86,13 +86,6 @@ def index():
     </body></html>
     """)
 
-@app.route('/get_img/<id>')
-def api_img(id):
-    # Solo aquí se recuperan las imágenes de un único registro
-    d = visitas_col.find_one({"_id": ObjectId(id)})
-    if not d: return jsonify({})
-    return jsonify({"pv": d.get('pv'), "f1": d.get('f_bmb'), "f2": d.get('f_fachada'), "gps": d.get('ubicacion')})
-
 @app.route('/formulario', methods=['GET', 'POST'])
 def formulario():
     if 'user_id' not in session: return redirect('/login')
@@ -101,7 +94,7 @@ def formulario():
             def b64(f):
                 if not f or not f.filename: return ""
                 encoded = base64.b64encode(f.read()).decode()
-                f.close() # Cierre inmediato para liberar memoria
+                f.close() # Liberación inmediata de RAM tras lectura
                 return f"data:image/jpeg;base64,{encoded}"
 
             pv_in, bmb_in, gps = request.form.get('pv'), request.form.get('bmb'), request.form.get('ubicacion')
@@ -111,6 +104,7 @@ def formulario():
             ruta_orig = pnt.get('Ruta', "") if pnt else ""
             dist = calcular_distancia(gps, ruta_orig)
             
+            # Lógica de validación automática
             estado_v = "Pendiente" if (pnt and bmb_in != bmb_orig) or dist > 100 else "Aprobado"
 
             visitas_col.insert_one({
@@ -123,7 +117,7 @@ def formulario():
             if estado_v == "Aprobado":
                 puntos_col.update_one({"Punto de Venta": pv_in}, {"$set": {"BMB": bmb_in, "Ruta": gps}}, upsert=True)
             
-            gc.collect() # Limpieza forzada de RAM
+            gc.collect() # Limpieza forzada del recolector de basura
             return redirect('/formulario?msg=OK')
         except Exception as e: return str(e), 500
     
@@ -133,13 +127,13 @@ def formulario():
     <body onload="navigator.geolocation.getCurrentPosition(p=>document.getElementById('gps').value=p.coords.latitude+','+p.coords.longitude)">
         <div style="max-width:400px; margin:auto; padding:20px;">
             <div class="card">
-                <h2 style="text-align:center;">Reporte BI</h2>
+                <h2>Nuevo Reporte</h2>
                 <form method="POST" enctype="multipart/form-data">
                     <input list="pts" name="pv" placeholder="Punto de Venta" required><datalist id="pts">{opts}</datalist>
                     <input type="text" name="bmb" placeholder="BMB Máquina" required>
                     <input type="date" name="fecha" value="{datetime.now().strftime('%Y-%m-%d')}">
-                    <input type="file" name="f1" accept="image/*" capture="camera" required>
-                    <input type="file" name="f2" accept="image/*" capture="camera" required>
+                    <label style="font-size:10px;">Foto BMB</label><input type="file" name="f1" accept="image/*" capture="camera" required>
+                    <label style="font-size:10px;">Foto Fachada</label><input type="file" name="f2" accept="image/*" capture="camera" required>
                     <input type="hidden" name="ubicacion" id="gps">
                     <button class="btn btn-blue">Enviar</button>
                     <a href="/" class="btn btn-light">Volver</a>
@@ -152,7 +146,7 @@ def formulario():
 @app.route('/validacion_admin')
 def validacion_admin():
     if session.get('role') != 'admin': return redirect('/')
-    # No cargamos imágenes masivas en la vista de validación
+    # Solo traemos texto para evitar el crash
     pends = list(visitas_col.find({"estado": "Pendiente"}, {"f_bmb":0, "f_fachada":0}))
     rows = ""
     for r in pends:
@@ -164,7 +158,7 @@ def validacion_admin():
                 <button class="btn btn-red" onclick="vF('{r['_id']}', 'rechazar')">X</button>
             </div>
         </div>'''
-    return render_template_string(f"<html><head><meta name='viewport' content='width=device-width, initial-scale=1.0'>{CSS_FIXED}</head><body><div class='main-content'><h2>Pendientes</h2>{rows or '<p>Limpio.</p>'}</div><div id='m_det' class='modal'><div class='modal-content' id='det_body'></div></div><script>async function verVisita(id){{ document.getElementById('m_det').style.display='block'; document.getElementById('det_body').innerHTML='Cargando...'; const r=await fetch('/get_img/'+id); const d=await r.json(); document.getElementById('det_body').innerHTML='<button class="btn btn-light" onclick=\\"document.getElementById(\\'m_det\\').style.display=\\'none\\'\\">Cerrar</button><img src=\\"'+d.f1+'\\" style=\\"width:100%;\\"><img src=\\"'+d.f2+'\\" style=\\"width:100%;\\">'; }} async function vF(id,op){{ await fetch('/api/v_final/'+id+'/'+op); location.reload(); }}</script></body></html>")
+    return render_template_string(f"<html><head><meta name='viewport' content='width=device-width, initial-scale=1.0'>{CSS_FIXED}</head><body><div class='main-content'><h2>Pendientes</h2><a href='/' class='btn btn-light' style='width:60px;'>←</a>{rows or '<p>Todo validado.</p>'}</div><div id='m_det' class='modal'><div class='modal-content' id='det_body'></div></div><script>async function verVisita(id){{ document.getElementById('m_det').style.display='block'; document.getElementById('det_body').innerHTML='Cargando...'; const r=await fetch('/get_img/'+id); const d=await r.json(); document.getElementById('det_body').innerHTML='<button class="btn btn-light" onclick=\\"document.getElementById(\\'m_det\\').style.display=\\'none\\'\\">Cerrar</button><img src=\\"'+d.f1+'\\" style=\\"width:100%;\\"><img src=\\"'+d.f2+'\\" style=\\"width:100%;\\">'; }} async function vF(id,op){{ await fetch('/api/v_final/'+id+'/'+op); location.reload(); }}</script></body></html>")
 
 @app.route('/api/v_final/<id>/<op>')
 def api_v_f(id, op):
@@ -175,6 +169,12 @@ def api_v_f(id, op):
     else:
         visitas_col.update_one({"_id": ObjectId(id)}, {"$set": {"estado": "Rechazado"}})
     return jsonify({"s":"ok"})
+
+@app.route('/get_img/<id>')
+def api_img(id):
+    # Solo aquí cargamos el peso de las fotos de un único registro
+    d = visitas_col.find_one({"_id": ObjectId(id)})
+    return jsonify({"pv": d.get('pv'), "f1": d.get('f_bmb'), "f2": d.get('f_fachada')})
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
