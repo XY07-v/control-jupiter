@@ -57,6 +57,22 @@ def index():
     if 'user_id' not in session: return redirect('/login')
     rol = session.get('role')
     
+    # Lógica de botones según ROL (Exportar solo para Admin)
+    botones = ""
+    if rol == 'admin':
+        botones = """
+            <button class="btn-g btn-primary" onclick="cargar('validaciones')">⚠️ Validaciones</button>
+            <button class="btn-g btn-outline" onclick="cargar('visitas')">📋 Historial</button>
+            <button class="btn-g btn-outline" onclick="cargar('puntos')">📍 Puntos</button>
+            <button class="btn-g btn-outline" onclick="cargar('usuarios')">👥 Usuarios</button>
+            <a href="/exportar_reportes" class="btn-g btn-outline">📤 Exportar Historial</a>
+        """
+    else:
+        botones = """
+            <a href="/formulario" class="btn-g btn-primary">📝 Nuevo Reporte</a>
+            <button class="btn-g btn-outline" onclick="cargar('puntos')">📍 Consultar Puntos</button>
+        """
+    
     return render_template_string(f"""
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">{CSS_GERENCIAL}</head>
     <body>
@@ -66,24 +82,12 @@ def index():
         </header>
         
         <div class="container">
-            <div class="action-bar" id="nav_btns">
-                {'''<button class="btn-g btn-primary" onclick="cargar('validaciones')">⚠️ Validaciones</button>
-                    <button class="btn-g btn-outline" onclick="cargar('visitas')">📋 Historial</button>
-                    <button class="btn-g btn-outline" onclick="cargar('puntos')">📍 Puntos</button>
-                    <button class="btn-g btn-outline" onclick="cargar('usuarios')">👥 Usuarios</button>
-                    <a href="/exportar_reportes" class="btn-g btn-outline">📤 Exportar</a>''' if rol == 'admin' else 
-                   '''<a href="/formulario" class="btn-g btn-primary">📝 Nuevo Reporte</a>
-                    <button class="btn-g btn-outline" onclick="cargar('puntos')">📍 Consultar Puntos</button>
-                    <a href="/exportar_reportes" class="btn-g btn-outline">📤 Exportar</a>'''}
-            </div>
-
+            <div class="action-bar" id="nav_btns">{botones}</div>
             <div class="search-box" id="search_container" style="display:none;">
                 <input type="text" id="buscador" placeholder="🔍 Buscar por Nombre o BMB..." onkeyup="filtrar()">
             </div>
-
             <div id="grid_data" class="grid-cards"></div>
         </div>
-
         <div id="m_global" class="modal"><div class="modal-content" id="m_body"></div></div>
 
         <script>
@@ -211,7 +215,6 @@ def formulario():
         pv_in, bmb_in, gps = request.form.get('pv'), request.form.get('bmb'), request.form.get('gps')
         pnt = puntos_col.find_one({"Punto de Venta": pv_in})
         
-        # LÓGICA DE MOTIVO DE ALERTA
         motivo_alerta = ""
         if not pnt: 
             motivo_alerta = "Nuevo Punto"
@@ -252,7 +255,6 @@ def formulario():
                     <button class="btn-g btn-primary" style="width:100%; margin-top:15px;">Enviar Reporte</button>
                     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:10px;">
                         <a href="/" class="btn-g btn-outline">Regresar</a>
-                        <a href="/logout" class="btn-g btn-danger">Cerrar Sesión</a>
                     </div>
                 </form>
             </div>
@@ -266,8 +268,6 @@ def formulario():
                     const r = await fetch(`/api/search/puntos?q=${{val}}`);
                     const data = await r.json();
                     document.getElementById('pts').innerHTML = data.map(p => `<option value="${{p['Punto de Venta']}}">`).join('');
-                    const found = data.find(x => x['Punto de Venta'] === val);
-                    if(found) document.getElementById('bmb_i').value = found.BMB || '';
                 }}, 300);
             }}
         </script>
@@ -276,10 +276,12 @@ def formulario():
 
 @app.route('/exportar_reportes')
 def exportar_reportes():
-    if 'user_id' not in session: return redirect('/login')
+    # Seguridad de backend: si no es admin, no descarga nada
+    if 'user_id' not in session or session.get('role') != 'admin': 
+        return "Acceso denegado", 403
+        
     si = io.StringIO()
     cw = csv.writer(si, delimiter=';')
-    # Traemos todos los registros de visitas con su estado y motivo de alerta
     reportes = list(visitas_col.find({}, {"f_bmb": 0, "f_fachada": 0, "_id": 0}))
     if reportes:
         cw.writerow(reportes[0].keys())
@@ -287,6 +289,7 @@ def exportar_reportes():
     
     return Response(si.getvalue(), mimetype="text/csv", headers={"Content-disposition": f"attachment; filename=historial_reportes_{datetime.now().strftime('%Y%m%d')}.csv"})
 
+# --- RESTO DE RUTAS IGUALES ---
 @app.route('/api/get/<tipo>')
 def api_get(tipo):
     query = {"estado": "Pendiente"} if tipo == 'validaciones' else {"estado": "Aprobado"} if tipo == 'visitas' else {}
