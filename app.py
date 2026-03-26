@@ -8,7 +8,7 @@ app = Flask(__name__)
 app.secret_key = "nestle_bi_poc_2026_v14_final"
 
 # --- CONEXIÓN MONGODB ---
-MONGO_URI = "mongodb+srv://control-jupiter:control-jupiter1234@cluster0.dtureen.mongodb.net/NestleDB?retryWrites=true&w=majority"
+MONGO_URI = "mongodb+srv://control-jupiter:<db_password>@cluster0.ytmei.mongodb.net/NestleDB?retryWrites=true&w=majority&appName=Cluster0"
 client = MongoClient(MONGO_URI)
 db = client['NestleDB']
 visitas_col = db['visitas']
