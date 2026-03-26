@@ -70,9 +70,10 @@ def index():
                     <button class="btn-g btn-outline" onclick="cargar('visitas')">📋 Historial</button>
                     <button class="btn-g btn-outline" onclick="cargar('puntos')">📍 Puntos</button>
                     <button class="btn-g btn-outline" onclick="cargar('usuarios')">👥 Usuarios</button>
-                    <button class="btn-g btn-outline" onclick="openModal('m_csv')">📥 Importar</button>''' if rol == 'admin' else 
+                    <a href="/exportar_puntos" class="btn-g btn-outline">📤 Exportar</a>''' if rol == 'admin' else 
                    '''<a href="/formulario" class="btn-g btn-primary">📝 Nuevo Reporte</a>
-                    <button class="btn-g btn-outline" onclick="cargar('puntos')">📍 Consultar Puntos</button>'''}
+                    <button class="btn-g btn-outline" onclick="cargar('puntos')">📍 Consultar Puntos</button>
+                    <a href="/exportar_puntos" class="btn-g btn-outline">📤 Exportar</a>'''}
             </div>
 
             <div class="search-box" id="search_container" style="display:none;">
@@ -83,12 +84,6 @@ def index():
         </div>
 
         <div id="m_global" class="modal"><div class="modal-content" id="m_body"></div></div>
-        <div id="m_csv" class="modal"><div class="modal-content">
-            <h3>Importar Puntos</h3>
-            <input type="file" id="f_csv" accept=".csv">
-            <button class="btn-g btn-primary" style="width:100%" onclick="subirCSV()">Procesar</button>
-            <button class="btn-g btn-outline" style="width:100%; margin-top:10px;" onclick="closeModal()">Cerrar</button>
-        </div></div>
 
         <script>
             let datosActuales = [];
@@ -197,14 +192,6 @@ def index():
                 await fetch(`/api/v_final/${{id}}/${{op}}`);
                 closeModal(); cargar('validaciones');
             }}
-
-            async function subirCSV() {{
-                const f = document.getElementById('f_csv').files[0]; if(!f) return;
-                const fd = new FormData(); fd.append('file_csv', f);
-                const r = await fetch('/carga_masiva_puntos', {{method:'POST', body:fd}});
-                const res = await r.json(); alert("Cargados: " + res.count);
-                closeModal(); cargar('puntos');
-            }}
             
             window.onload = () => cargar(miRol === 'admin' ? 'validaciones' : 'puntos');
         </script>
@@ -273,6 +260,18 @@ def formulario():
     </body></html>
     """)
 
+@app.route('/exportar_puntos')
+def exportar_puntos():
+    if 'user_id' not in session: return redirect('/login')
+    si = io.StringIO()
+    cw = csv.writer(si)
+    puntos = list(puntos_col.find({}, {"_id": 0}))
+    if puntos:
+        cw.writerow(puntos[0].keys())
+        for p in puntos: cw.writerow(p.values())
+    
+    return Response(si.getvalue(), mimetype="text/csv", headers={"Content-disposition": f"attachment; filename=puntos_venta_{datetime.now().strftime('%Y%m%d')}.csv"})
+
 @app.route('/api/get/<tipo>')
 def api_get(tipo):
     query = {"estado": "Pendiente"} if tipo == 'validaciones' else {"estado": "Aprobado"} if tipo == 'visitas' else {}
@@ -310,17 +309,6 @@ def api_v_f(id, op):
         visitas_col.update_one({"_id": ObjectId(id)}, {"$set": {"estado": "Aprobado"}})
     else: visitas_col.update_one({"_id": ObjectId(id)}, {"$set": {"estado": "Rechazado"}})
     return jsonify({"s":"ok"})
-
-@app.route('/carga_masiva_puntos', methods=['POST'])
-def api_csv():
-    f = request.files.get('file_csv')
-    if f:
-        content = f.stream.read().decode("utf-8-sig", errors="ignore")
-        reader = csv.DictReader(io.StringIO(content), delimiter=';' if ';' in content else ',')
-        lista = [r for r in reader]
-        if lista: puntos_col.delete_many({}); puntos_col.insert_many(lista)
-        return jsonify({"count": len(lista)})
-    return jsonify({"error": "No file"}), 400
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
