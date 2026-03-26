@@ -161,9 +161,11 @@ HTML_SISTEMA = """
             <label style="font-size:12px; color:gray; margin-left:5px;">Estado de Visita:</label>
             <select id="f_estado">
                 <option value="Visita Exitosa">Visita Exitosa</option>
-                <option value="Cerrado">Punto Cerrado</option>
-                <option value="Dañado">Equipo Dañado</option>
-                <option value="No permitido">Acceso Denegado</option>
+                <option value="Punto Cerrado">Punto Cerrado</option>
+                <option value="Fuera de Rango">Fuera de Rango</option>
+                <option value="Cambio de BMB">Cambio de BMB</option>
+                <option value="Maquina Retirada">Maquina Retirada</option>
+                <option value="Error App Trade">Error App Trade</option>
             </select>
 
             <label style="font-size:12px; color:gray; margin-left:5px;">Foto del Equipo (Obligatoria):</label>
