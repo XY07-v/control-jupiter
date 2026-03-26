@@ -37,14 +37,25 @@ CSS_GERENCIAL = """
     .card-mini { background: white; border-radius: 12px; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 1px solid #efefef; transition: 0.3s; position: relative; }
     .card-mini:hover { transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
     .action-bar { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 10px; }
-    .btn-g { padding: 10px 18px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: 0.2s; white-space: nowrap; text-decoration: none; text-align: center; justify-content: center; }
+    
+    /* Botones Unificados */
+    .btn-g { 
+        height: 40px; padding: 0 18px; border-radius: 8px; border: none; 
+        font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; 
+        align-items: center; gap: 8px; transition: 0.2s; white-space: nowrap; 
+        text-decoration: none; justify-content: center; box-sizing: border-box;
+    }
+    .btn-full { width: 100%; margin-top: 10px; }
     .btn-primary { background: var(--nestle-blue); color: white; }
     .btn-outline { background: white; color: var(--nestle-blue); border: 1px solid var(--nestle-blue); }
     .btn-danger { background: #FF3B30; color: white; }
+    
     .modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); z-index: 1000; }
     .modal-content { background: white; margin: 5% auto; width: 95%; max-width: 600px; border-radius: 16px; padding: 25px; max-height: 85vh; overflow-y: auto; }
-    input, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; box-sizing: border-box; }
-    @media (max-width: 600px) { .grid-cards { grid-template-columns: 1fr; } }
+    input, select, textarea { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; box-sizing: border-box; }
+    .badge { padding: 4px 8px; border-radius: 6px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+    .badge-warn { background: #FFF9E6; color: #FF9500; }
+    .img-preview { width: 100%; border-radius: 10px; margin-top: 10px; }
 </style>
 """
 
@@ -75,18 +86,20 @@ def index():
         <div id="m_csv" class="modal"><div class="modal-content">
             <h3>Carga Masiva de Puntos</h3>
             <input type="file" id="f_csv" accept=".csv">
-            <button class="btn-g btn-primary" style="width:100%" onclick="subirCSV()">Procesar Archivo</button>
-            <button class="btn-g btn-outline" style="width:100%; margin-top:10px;" onclick="closeModal()">Cerrar</button>
+            <button class="btn-g btn-primary btn-full" onclick="subirCSV()">Procesar Archivo</button>
+            <button class="btn-g btn-outline btn-full" onclick="closeModal()">Cerrar</button>
         </div></div>
         <script>
             function openModal(id) {{ document.getElementById(id).style.display='block'; }}
             function closeModal() {{ document.querySelectorAll('.modal').forEach(m=>m.style.display='none'); }}
+
             function filtrarGrilla() {{
                 const val = document.getElementById('main_search').value.toLowerCase();
                 document.querySelectorAll('.card-mini').forEach(card => {{
                     card.style.display = card.innerText.toLowerCase().includes(val) ? 'block' : 'none';
                 }});
             }}
+
             async function cargar(tipo) {{
                 const grid = document.getElementById('grid_data');
                 grid.innerHTML = 'Cargando...';
@@ -94,19 +107,42 @@ def index():
                 const data = await r.json();
                 let html = '';
                 data.forEach(d => {{
-                    if(tipo === 'validaciones') html += `<div class="card-mini" style="border-left:5px solid orange"><b>${{d.pv}}</b><br><small>${{d.n_documento}}</small><button class="btn-g btn-primary" style="width:100%; margin-top:10px;" onclick="verDetalleValidar('${{d._id}}')">Revisar</button></div>`;
-                    else if(tipo === 'visitas') html += `<div class="card-mini"><b>${{d.pv}}</b><br><small>${{d.fecha}}</small></div>`;
-                    else if(tipo === 'puntos') html += `<div class="card-mini"><b>${{d['Punto de Venta']}}</b><br><small>BMB: ${{d.BMB}}</small></div>`;
-                    else if(tipo === 'usuarios') html += `<div class="card-mini"><b>${{d.nombre_completo}}</b><br><small>${{d.rol}}</small></div>`;
+                    if(tipo === 'validaciones') {{
+                        html += `<div class="card-mini" style="border-left:5px solid orange"><span class="badge badge-warn">Pendiente</span><div style="margin:10px 0;"><b>${{d.pv}}</b><br><small>${{d.n_documento}}</small></div><button class="btn-g btn-primary btn-full" onclick="verDetalleValidar('${{d._id}}')">Revisar</button></div>`;
+                    }} else if(tipo === 'visitas') {{
+                        html += `<div class="card-mini"><b>${{d.pv}}</b><br><small>${{d.fecha}}</small></div>`;
+                    }} else if(tipo === 'puntos') {{
+                        html += `<div class="card-mini"><b>${{d['Punto de Venta']}}</b><br><small>BMB: ${{d.BMB || 'N/A'}}</small><button class="btn-g btn-outline btn-full" onclick="formEdit('puntos', '${{d._id}}')">Editar</button></div>`;
+                    }} else if(tipo === 'usuarios') {{
+                        html += `<div class="card-mini"><b>${{d.nombre_completo}}</b><br><small>${{d.rol}}</small><button class="btn-g btn-outline btn-full" onclick="formEdit('usuarios', '${{d._id}}')">Editar</button></div>`;
+                    }}
                 }});
-                grid.innerHTML = html;
+                grid.innerHTML = html || '<p>Sin registros.</p>';
             }}
+
             async function verDetalleValidar(id) {{
                 openModal('m_global');
                 const r = await fetch('/api/detalle/visitas/' + id);
                 const d = await r.json();
-                document.getElementById('m_body').innerHTML = `<h3>Validar</h3><p>${{d.pv}}</p><img src="${{d.f_bmb}}" style="width:100%"><img src="${{d.f_fachada}}" style="width:100%"><div style="display:flex; gap:10px; margin-top:10px;"><button class="btn-g btn-primary" style="flex:1" onclick="finalizar('${{id}}','aprobar')">Aceptar</button><button class="btn-g btn-danger" style="flex:1" onclick="finalizar('${{id}}','rechazar')">Rechazar</button></div>`;
+                document.getElementById('m_body').innerHTML = `<h3>Validar</h3><p><b>${{d.pv}}</b></p><img src="${{d.f_bmb}}" class="img-preview"><img src="${{d.f_fachada}}" class="img-preview"><div style="display:flex; gap:10px; margin-top:15px;"><button class="btn-g btn-primary" style="flex:1" onclick="finalizar('${{id}}','aprobar')">APROBAR</button><button class="btn-g btn-danger" style="flex:1" onclick="finalizar('${{id}}','rechazar')">RECHAZAR</button></div><button class="btn-g btn-outline btn-full" onclick="closeModal()">Cerrar</button>`;
             }}
+
+            async function formEdit(tipo, id) {{
+                openModal('m_global');
+                const r = await fetch(\`/api/detalle/${{tipo}}/${{id}}\`);
+                const d = await r.json();
+                let fields = \`<h3>Editar Registro</h3><form id="editForm">\`;
+                for (let k in d) {{ if(k !== '_id' && !k.startsWith('f_')) fields += \`<label>${{k}}</label><input type="text" name="${{k}}" value="${{d[k]}}">\`; }}
+                fields += \`</form><button class="btn-g btn-primary btn-full" onclick="guardarEdicion('${{tipo}}','${{id}}')">Guardar</button><button class="btn-g btn-outline btn-full" onclick="closeModal()">Cancelar</button>\`;
+                document.getElementById('m_body').innerHTML = fields;
+            }}
+
+            async function guardarEdicion(tipo, id) {{
+                const fd = new FormData(document.getElementById('editForm'));
+                await fetch('/api/update/' + tipo + '/' + id, {{ method: 'POST', headers: {{'Content-Type': 'application/json'}}, body: JSON.stringify(Object.fromEntries(fd.entries())) }});
+                closeModal(); cargar(tipo);
+            }}
+
             async function finalizar(id, op) {{ await fetch(\`/api/v_final/${{id}}/${{op}}\`); closeModal(); cargar('validaciones'); }}
             async function subirCSV() {{
                 const f = document.getElementById('f_csv').files[0]; if(!f) return;
@@ -149,12 +185,12 @@ def formulario():
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">{CSS_GERENCIAL}</head>
     <body onload="navigator.geolocation.getCurrentPosition(p=>document.getElementById('gps').value=p.coords.latitude+','+p.coords.longitude)">
         <div class="container" style="max-width:450px;">
-            <div class="card-mini">
+            <div class="card-mini" style="padding:25px;">
                 <h2 style="color:var(--nestle-blue); text-align:center;">Nuevo Reporte</h2>
-                { '<p style="color:green; text-align:center;">✓ Reporte enviado con éxito</p>' if request.args.get('success') else '' }
+                { '<p style="color:green; text-align:center;">✓ Enviado Correctamente</p>' if request.args.get('success') else '' }
                 <form method="POST" enctype="multipart/form-data">
                     <label>Punto de Venta</label>
-                    <input list="pts" name="pv" oninput="vincular(this.value)" required placeholder="Buscar punto...">
+                    <input list="pts" name="pv" oninput="vincular(this.value)" required placeholder="Buscar...">
                     <datalist id="pts">{opts}</datalist>
                     <label>BMB Detectado</label><input type="text" name="bmb" id="bmb_i" required>
                     <label>Motivo</label><select name="motivo"><option>Visita Exitosa</option><option>Cerrado</option></select>
@@ -163,17 +199,17 @@ def formulario():
                     <input type="file" name="f1" accept="image/*" capture="camera" required>
                     <input type="file" name="f2" accept="image/*" capture="camera" required>
                     <input type="hidden" name="gps" id="gps">
-                    <button class="btn-g btn-primary" style="width:100%; margin-top:10px;">Enviar Reporte</button>
+                    <button class="btn-g btn-primary btn-full">Enviar Reporte</button>
                 </form>
-                <button class="btn-g btn-outline" style="width:100%; margin-top:10px;" onclick="openModal('m_pts_view')">Consultar Puntos</button>
-                <a href="/logout" class="btn-g btn-danger" style="width:100%; margin-top:10px; text-decoration:none;">Cerrar Sesión</a>
+                <button class="btn-g btn-outline btn-full" onclick="openModal('m_pts_view')">Consultar Puntos</button>
+                <a href="/logout" class="btn-g btn-danger btn-full">Cerrar Sesión</a>
             </div>
         </div>
         <div id="m_pts_view" class="modal"><div class="modal-content">
-            <h3>Puntos Registrados</h3>
+            <h3>Puntos de Venta</h3>
             <input type="text" id="q_pts" placeholder="Buscar..." onkeyup="f_pts()">
-            <div id="lista_pts" style="margin-top:10px;"></div>
-            <button class="btn-g btn-outline" style="width:100%; margin-top:10px;" onclick="closeModal()">Cerrar</button>
+            <div id="lista_pts" style="margin-top:10px; max-height:300px; overflow-y:auto;"></div>
+            <button class="btn-g btn-outline btn-full" onclick="closeModal()">Cerrar</button>
         </div></div>
         <script>
             const pts = {json.dumps(pts)};
@@ -183,8 +219,8 @@ def formulario():
             function f_pts() {{
                 const q = document.getElementById('q_pts').value.toLowerCase();
                 let h = '';
-                pts.filter(p => p['Punto de Venta'].toLowerCase().includes(q)).slice(0,20).forEach(p => {{
-                    h += `<div style="padding:10px; border-bottom:1px solid #eee;"><b>${{p['Punto de Venta']}}</b><br><small>BMB: ${{p.BMB}}</small></div>`;
+                pts.filter(p => p['Punto de Venta'].toLowerCase().includes(q)).slice(0,30).forEach(p => {{
+                    h += \`<div style="padding:10px; border-bottom:1px solid #eee;"><b>\${{p['Punto de Venta']}}</b><br><small>BMB: \${{p.BMB}}</small></div>\`;
                 }});
                 document.getElementById('lista_pts').innerHTML = h;
             }}
@@ -200,10 +236,16 @@ def api_get(tipo):
     for d in res: d['_id'] = str(d['_id'])
     return jsonify(res)
 
-@app.route('/api/detalle/visitas/<id>')
-def api_det_v(id):
-    d = visitas_col.find_one({"_id": ObjectId(id)}); d['_id'] = str(d['_id'])
+@app.route('/api/detalle/<tipo>/<id>')
+def api_det(tipo, id):
+    col = db['visitas' if tipo=='visitas' else 'puntos_venta' if tipo=='puntos' else 'usuarios']
+    d = col.find_one({"_id": ObjectId(id)}); d['_id'] = str(d['_id'])
     return jsonify(d)
+
+@app.route('/api/update/<tipo>/<id>', methods=['POST'])
+def api_up(tipo, id):
+    db['visitas' if tipo=='visitas' else 'puntos_venta' if tipo=='puntos' else 'usuarios'].update_one({"_id": ObjectId(id)}, {"$set": request.json})
+    return jsonify({"s":"ok"})
 
 @app.route('/api/v_final/<id>/<op>')
 def api_v_f(id, op):
@@ -235,7 +277,7 @@ def login():
     if request.method == 'POST':
         u = usuarios_col.find_one({"usuario": request.form.get('u'), "password": request.form.get('p')})
         if u: session.update({'user_id': str(u['_id']), 'user_name': u['nombre_completo'], 'role': u.get('rol', 'asesor')}); return redirect('/')
-    return render_template_string(f"<html><head>{CSS_GERENCIAL}</head><body style='display:flex; justify-content:center; align-items:center; height:100vh;'><div class='card-mini' style='width:300px;'><h3>Nestlé BI</h3><form method='POST'><input type='text' name='u' placeholder='Usuario'><input type='password' name='p' placeholder='Clave'><button class='btn-g btn-primary' style='width:100%'>Entrar</button></form></div></body></html>")
+    return render_template_string(f"<html><head>{CSS_GERENCIAL}</head><body style='display:flex; justify-content:center; align-items:center; height:100vh;'><div class='card-mini' style='width:300px; padding:20px;'><h3>Nestlé BI</h3><form method='POST'><input type='text' name='u' placeholder='Usuario'><input type='password' name='p' placeholder='Clave'><button class='btn-g btn-primary btn-full'>Entrar</button></form></div></body></html>")
 
 @app.route('/logout')
 def logout(): session.clear(); return redirect('/login')
