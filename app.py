@@ -5,7 +5,7 @@ import base64, io, csv, math, gc, json
 from datetime import datetime
 
 app = Flask(__name__)
-app.secret_key = "nestle_bi_executive_v19"
+app.secret_key = "nestle_bi_executive_v19_fixed"
 
 # --- CONEXIÓN MONGODB ---
 MONGO_URI = "mongodb+srv://control-jupiter:control-jupiter1234@cluster0.dtureen.mongodb.net/NestleDB?retryWrites=true&w=majority"
@@ -54,7 +54,91 @@ CSS_GERENCIAL = """
 def index():
     if 'user_id' not in session: return redirect('/login')
     rol = session.get('role')
-    return render_template_string(f"""
+    
+    # Separamos el JS para que Python no lo toque con f-string
+    js_code = """
+    <script>
+        let tipoActual = '';
+        const miRol = '""" + str(rol) + """';
+
+        function openM() { document.getElementById('m_global').style.display='block'; }
+        function closeM() { document.getElementById('m_global').style.display='none'; }
+
+        async function cargar(tipo) {
+            tipoActual = tipo;
+            document.getElementById('search_container').style.display = (tipo === 'puntos' || tipo === 'visitas' || tipo === 'usuarios') ? 'flex' : 'none';
+            document.getElementById('buscador').value = '';
+            if(tipo !== 'puntos') { ejecutarBusqueda(); } 
+            else { document.getElementById('grid_data').innerHTML = '<p style="text-align:center; grid-column:1/-1; color:gray;">Use la lupa para buscar un punto.</p>'; }
+        }
+
+        async function ejecutarBusqueda() {
+            const query = document.getElementById('buscador').value;
+            const grid = document.getElementById('grid_data');
+            grid.innerHTML = '<p style="grid-column:1/-1; text-align:center;">Buscando...</p>';
+            const r = await fetch(`/api/get/${tipoActual}?q=${encodeURIComponent(query)}`);
+            const data = await r.json();
+            let html = '';
+            data.forEach(d => {
+                if(tipoActual === 'validaciones' || tipoActual === 'visitas') {
+                    let mot = d.distancia_m > 100 ? '📍 Fuera de Rango' : (d.bmb_actual === 'NUEVO' ? '🆕 Punto Nuevo' : '🔄 Cambio BMB');
+                    let col = d.estado === 'Pendiente' ? '#FF9500' : '#2E7D32';
+                    html += `<div class="card-mini" style="border-left: 5px solid ${col};">
+                        <b>${d.pv}</b><br><small>${d.fecha}</small><br>
+                        <span class="badge-info">${mot}</span>
+                        <button class="btn-g btn-outline" style="width:100%; margin-top:10px;" onclick="verDetalle('${d._id}', ${d.estado === 'Pendiente'})">Ver Detalle</button>
+                    </div>`;
+                } else if(tipoActual === 'puntos') {
+                    html += `<div class="card-mini">
+                        <b>${d['Punto de Venta']}</b><br><small>BMB: ${d.BMB || 'N/A'}</small>
+                        ${miRol === 'admin' ? `<button class="btn-g btn-outline" style="width:100%; margin-top:10px;" onclick="formEdit('puntos', '${d._id}')">Editar</button>` : ''}
+                    </div>`;
+                } else if(tipoActual === 'usuarios') {
+                    html += `<div class="card-mini"><b>${d.nombre_completo}</b><br><small>${d.rol}</small>
+                        <button class="btn-g btn-outline" style="width:100%; margin-top:10px;" onclick="formEdit('usuarios', '${d._id}')">Editar</button>
+                    </div>`;
+                }
+            });
+            grid.innerHTML = html || '<p style="grid-column:1/-1; text-align:center;">Sin resultados.</p>';
+        }
+
+        async function verDetalle(id, btns) {
+            openM();
+            const r = await fetch('/api/detalle/visitas/' + id);
+            const d = await r.json();
+            let h = `<h3>Detalle</h3><b>${d.pv}</b><br>Distancia: ${d.distancia_m}m<br>
+                <img src="${d.f_bmb}" class="img-preview">
+                <div style="display:flex; gap:10px; margin-top:15px;">
+                    ${btns ? `<button class="btn-g btn-primary" style="flex:1" onclick="validar('${id}','aprobar')">Aprobar</button>
+                    <button class="btn-g btn-danger" style="flex:1" onclick="validar('${id}','rechazar')">Rechazar</button>` : ''}
+                </div>
+                <button class="btn-g btn-outline" style="width:100%; margin-top:10px;" onclick="closeM()">Cerrar</button>`;
+            document.getElementById('m_body').innerHTML = h;
+        }
+
+        async function validar(id, op) {
+            await fetch(`/api/v_final/${id}/${op}`); closeM(); cargar('validaciones');
+        }
+
+        async function formEdit(t, id) {
+            openM(); const r = await fetch(`/api/detalle/${t}/${id}`); const d = await r.json();
+            let f = '<h3>Editar</h3><form id="eF">';
+            for(let k in d) if(k !== '_id' && (typeof d[k] !== 'string' || d[k].length < 200)) f += `<label>${k}</label><input type="text" name="${k}" value="${d[k]}">`;
+            f += '</form><button class="btn-g btn-primary" style="width:100%" onclick="guardarEd(\''+t+'\', \''+id+'\')">Guardar</button>';
+            document.getElementById('m_body').innerHTML = f;
+        }
+
+        async function guardarEd(t, id) {
+            const fd = new FormData(document.getElementById('eF'));
+            await fetch('/api/update/'+t+'/'+id, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(Object.fromEntries(fd))});
+            closeM(); cargar(t);
+        }
+
+        window.onload = () => cargar(miRol === 'admin' ? 'validaciones' : 'puntos');
+    </script>
+    """
+
+    html_body = f"""
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">{CSS_GERENCIAL}</head>
     <body>
         <header>
@@ -71,127 +155,17 @@ def index():
                    '''<a href="/formulario" class="btn-g btn-primary">📝 Nuevo Reporte</a>
                     <button class="btn-g btn-outline" onclick="cargar('puntos')">📍 Consultar Puntos</button>'''}
             </div>
-
             <div class="search-group" id="search_container" style="display:none;">
-                <input type="text" id="buscador" placeholder="Buscar por Nombre o BMB...">
+                <input type="text" id="buscador" placeholder="Buscar...">
                 <button class="btn-g btn-primary" style="border-radius: 20px;" onclick="ejecutarBusqueda()">🔍 Buscar</button>
             </div>
-
             <div id="grid_data" class="grid-cards"></div>
         </div>
         <div id="m_global" class="modal"><div class="modal-content" id="m_body"></div></div>
-
-        <script>
-            let tipoActual = '';
-            const miRol = "{rol}";
-
-            function openM() {{ document.getElementById('m_global').style.display='block'; }}
-            function closeM() {{ document.getElementById('m_global').style.display='none'; }}
-
-            async function cargar(tipo) {{
-                tipoActual = tipo;
-                document.getElementById('search_container').style.display = (tipo === 'puntos' || tipo === 'visitas' || tipo === 'usuarios') ? 'flex' : 'none';
-                document.getElementById('buscador').value = '';
-                
-                if(tipo !== 'puntos') {{
-                    ejecutarBusqueda(); 
-                }} else {{
-                    document.getElementById('grid_data').innerHTML = '<p style="text-align:center; grid-column:1/-1; color:gray; margin-top:20px;">Utilice la barra superior para buscar un punto específico.</p>';
-                }}
-            }}
-
-            async function ejecutarBusqueda() {{
-                const query = document.getElementById('buscador').value;
-                const grid = document.getElementById('grid_data');
-                grid.innerHTML = '<p style="grid-column:1/-1; text-align:center;">Buscando...</p>';
-                
-                const r = await fetch(`/api/get/${{tipoActual}}?q=${{encodeURIComponent(query)}}`);
-                const data = await r.json();
-                
-                let html = '';
-                data.forEach(d => {{
-                    if(tipoActual === 'validaciones' || tipoActual === 'visitas') {{
-                        let motivo = d.distancia_m > 100 ? '📍 Fuera de Rango' : (d.bmb_actual === 'NUEVO' ? '🆕 Punto Nuevo' : '🔄 Cambio BMB');
-                        let color = d.estado === 'Pendiente' ? '#FF9500' : '#2E7D32';
-                        html += `<div class="card-mini" style="border-left: 5px solid ${{color}};">
-                            <b>${{d.pv}}</b><br><small>${{d.fecha}}</small><br>
-                            <span class="badge-info">${{motivo}}</span>
-                            <button class="btn-g btn-outline" style="width:100%; margin-top:10px; padding:5px;" onclick="verDetalle('${{d._id}}', ${{d.estado === 'Pendiente'}})">Ver Detalle</button>
-                        </div>`;
-                    } else if(tipoActual === 'puntos') {{
-                        html += `<div class="card-mini">
-                            <b>${{d['Punto de Venta']}}</b><br><small>BMB: ${{d.BMB || 'N/A'}}</small>
-                            ${{miRol === 'admin' ? `<button class="btn-g btn-outline" style="width:100%; margin-top:10px; padding:5px;" onclick="formEdit('puntos', '${{d._id}}')">Editar</button>` : ''}}
-                        </div>`;
-                    } else if(tipoActual === 'usuarios') {{
-                        html += `<div class="card-mini">
-                            <b>${{d.nombre_completo}}</b><br><small>Rol: ${{d.rol}}</small>
-                            <button class="btn-g btn-outline" style="width:100%; margin-top:10px; padding:5px;" onclick="formEdit('usuarios', '${{d._id}}')">Editar</button>
-                        </div>`;
-                    }}
-                }});
-                grid.innerHTML = html || '<p style="grid-column:1/-1; text-align:center; color:gray;">No se encontraron registros.</p>';
-            }}
-
-            async function verDetalle(id, botones) {{
-                openM();
-                const r = await fetch('/api/detalle/visitas/' + id);
-                const d = await r.json();
-                let html = `<h3>Detalle de Visita</h3>
-                    <div style="font-size:13px; margin-bottom:10px;">
-                        <b>\${{d.pv}}</b><br>
-                        BMB Actual: \${{d.bmb_actual}}<br>
-                        BMB Propuesto: \${{d.bmb_propuesto}}<br>
-                        Distancia: \${{d.distancia_m}} metros
-                    </div>
-                    <img src="\${{d.f_bmb}}" class="img-preview">
-                    <div style="display:flex; gap:10px; margin-top:20px;">
-                        \${{botones ? `
-                            <button class="btn-g btn-primary" style="flex:1" onclick="validar('\${{id}}','aprobar')">Aprobar</button>
-                            <button class="btn-g btn-danger" style="flex:1" onclick="validar('\${{id}}','rechazar')">Rechazar</button>
-                        ` : ''}}
-                    </div>
-                    <button class="btn-g btn-outline" style="width:100%; margin-top:10px;" onclick="closeM()">Cerrar</button>`;
-                document.getElementById('m_body').innerHTML = html;
-            }}
-
-            async function validar(id, op) {{
-                await fetch(\`/api/v_final/\${{id}}/\${{op}}\`);
-                closeM();
-                cargar('validaciones');
-            }}
-
-            async function formEdit(tipo, id) {{
-                openM();
-                const r = await fetch(\`/api/detalle/\${{tipo}}/\${{id}}\`);
-                const d = await r.json();
-                let f = '<h3>Editar Registro</h3><form id="eF">';
-                for(let k in d) {{
-                    if(k !== '_id' && (typeof d[k] !== 'string' || d[k].length < 200)) {{
-                        f += `<label style="font-size:11px; font-weight:bold;">\${{k}}</label>
-                              <input type="text" name="\${{k}}" value="\${{d[k]}}">`;
-                    }}
-                }}
-                f += '</form><button class="btn-g btn-primary" style="width:100%; margin-top:10px;" onclick="guardarEd(\''+tipo+'\', \''+id+'\')">Guardar Cambios</button>';
-                f += '<button class="btn-g btn-outline" style="width:100%; margin-top:8px;" onclick="closeM()">Cancelar</button>';
-                document.getElementById('m_body').innerHTML = f;
-            }}
-
-            async function guardarEd(t, id) {{
-                const fd = new FormData(document.getElementById('eF'));
-                await fetch('/api/update/'+t+'/'+id, {{
-                    method:'POST', 
-                    headers:{{'Content-Type':'application/json'}}, 
-                    body:JSON.stringify(Object.fromEntries(fd))
-                }});
-                closeM(); 
-                cargar(t);
-            }}
-
-            window.onload = () => cargar(miRol === 'admin' ? 'validaciones' : 'puntos');
-        </script>
+        {js_code}
     </body></html>
-    """)
+    """
+    return render_template_string(html_body)
 
 @app.route('/api/get/<tipo>')
 def api_get(tipo):
@@ -199,16 +173,8 @@ def api_get(tipo):
     query = {}
     if tipo == 'validaciones': query = {"estado": "Pendiente"}
     elif tipo == 'visitas': query = {"estado": "Aprobado"}
-    
     if q:
-        search_filter = {"$or": [
-            {"pv": {"$regex": q, "$options": "i"}},
-            {"Punto de Venta": {"$regex": q, "$options": "i"}},
-            {"BMB": {"$regex": q, "$options": "i"}},
-            {"nombre_completo": {"$regex": q, "$options": "i"}}
-        ]}
-        query.update(search_filter)
-    
+        query.update({"$or": [{"pv": {"$regex": q, "$options": "i"}}, {"Punto de Venta": {"$regex": q, "$options": "i"}}, {"nombre_completo": {"$regex": q, "$options": "i"}}]})
     col = db['visitas' if tipo in ['visitas', 'validaciones'] else 'puntos_venta' if tipo == 'puntos' else 'usuarios']
     limit = 100 if tipo == 'visitas' else 50
     res = list(col.find(query, {"f_bmb":0, "f_fachada":0}).sort("_id", -1).limit(limit))
@@ -228,12 +194,7 @@ def formulario():
         bmb_base = pnt.get('BMB', "NUEVO") if pnt else "NUEVO"
         dist = calcular_distancia(gps, pnt.get('Ruta')) if pnt else 0
         estado = "Pendiente" if (bmb_in != bmb_base or dist > 100 or bmb_base == "NUEVO") else "Aprobado"
-        visitas_col.insert_one({
-            "pv": pv_in, "bmb_actual": bmb_base, "bmb_propuesto": bmb_in,
-            "fecha": request.form.get('fecha'), "n_documento": session.get('user_name'),
-            "motivo": request.form.get('motivo'), "ubicacion": gps, "distancia_m": round(dist, 1), 
-            "estado": estado, "f_bmb": to_b64(request.files.get('f1')), "f_fachada": to_b64(request.files.get('f2'))
-        })
+        visitas_col.insert_one({"pv": pv_in, "bmb_actual": bmb_base, "bmb_propuesto": bmb_in, "fecha": request.form.get('fecha'), "n_documento": session.get('user_name'), "motivo": request.form.get('motivo'), "ubicacion": gps, "distancia_m": round(dist, 1), "estado": estado, "f_bmb": to_b64(request.files.get('f1')), "f_fachada": to_b64(request.files.get('f2'))})
         if estado == "Aprobado": puntos_col.update_one({"Punto de Venta": pv_in}, {"$set": {"BMB": bmb_in, "Ruta": gps}}, upsert=True)
         return redirect('/formulario?msg=OK')
     pts = list(puntos_col.find({}, {"Punto de Venta": 1, "_id": 0}))
@@ -241,40 +202,18 @@ def formulario():
     return render_template_string(f"""
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">{CSS_GERENCIAL}</head>
     <body onload="navigator.geolocation.getCurrentPosition(p=>document.getElementById('gps').value=p.coords.latitude+','+p.coords.longitude)">
-        <div class="container" style="max-width:400px;">
-            <div class="card-mini">
-                <h2 style="text-align:center; color:var(--nestle-blue);">Reporte de Visita</h2>
-                <form method="POST" enctype="multipart/form-data">
-                    <label>Punto de Venta</label><input list="pts" name="pv" placeholder="Escriba el nombre..." required><datalist id="pts">{opts}</datalist>
-                    <label>BMB Detectado</label><input type="text" name="bmb" required>
-                    <label>Motivo</label><select name="motivo"><option>Visita Exitosa</option><option>Cerrado</option></select>
-                    <label>Fecha</label><input type="date" name="fecha" value="{datetime.now().strftime('%Y-%m-%d')}">
-                    <label>Evidencias</label>
-                    <input type="file" name="f1" accept="image/*" capture="camera">
-                    <input type="file" name="f2" accept="image/*" capture="camera">
-                    <input type="hidden" name="gps" id="gps">
-                    <button class="btn-g btn-primary" style="width:100%; margin-top:15px;">Enviar Reporte</button>
-                    <div style="display:flex; gap:10px; margin-top:10px;">
-                        <a href="/" class="btn-g btn-outline" style="flex:1">Regresar</a>
-                        <a href="/logout" class="btn-g btn-danger" style="flex:1">Salir</a>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </body></html>
-    """)
+        <div class="container" style="max-width:400px;"><div class="card-mini"><h2>Reporte</h2><form method="POST" enctype="multipart/form-data"><input list="pts" name="pv" placeholder="Punto de Venta" required><datalist id="pts">{opts}</datalist><input type="text" name="bmb" placeholder="BMB"><select name="motivo"><option>Visita Exitosa</option></select><input type="date" name="fecha" value="{datetime.now().strftime('%Y-%m-%d')}"><input type="file" name="f1" capture="camera"><input type="file" name="f2" capture="camera"><input type="hidden" name="gps" id="gps"><button class="btn-g btn-primary" style="width:100%">Enviar</button><div style="display:flex; gap:10px; margin-top:10px;"><a href="/" class="btn-g btn-outline" style="flex:1">Regresar</a><a href="/logout" class="btn-g btn-danger" style="flex:1">Salir</a></div></form></div></div>
+    </body></html>""")
 
 @app.route('/api/detalle/<tipo>/<id>')
 def api_det(tipo, id):
     col = db['visitas' if tipo=='visitas' else 'puntos_venta' if tipo=='puntos' else 'usuarios']
-    d = col.find_one({"_id": ObjectId(id)})
-    if d: d['_id'] = str(d['_id'])
+    d = col.find_one({"_id": ObjectId(id)}); d['_id'] = str(d['_id'])
     return jsonify(d)
 
 @app.route('/api/update/<tipo>/<id>', methods=['POST'])
 def api_up(tipo, id):
-    col = db['visitas' if tipo=='visitas' else 'puntos_venta' if tipo=='puntos' else 'usuarios']
-    col.update_one({"_id": ObjectId(id)}, {"$set": request.json})
+    db['visitas' if tipo=='visitas' else 'puntos_venta' if tipo=='puntos' else 'usuarios'].update_one({"_id": ObjectId(id)}, {"$set": request.json})
     return jsonify({"s":"ok"})
 
 @app.route('/api/v_final/<id>/<op>')
@@ -289,8 +228,7 @@ def api_v_f(id, op):
 @app.route('/descargar')
 def descargar():
     cursor = visitas_col.find({"estado": "Aprobado"}, {"f_bmb":0, "f_fachada":0, "_id":0})
-    si = io.StringIO(); w = csv.writer(si)
-    w.writerow(['Punto', 'BMB Ant', 'BMB Nuevo', 'Fecha', 'Asesor', 'Distancia'])
+    si = io.StringIO(); w = csv.writer(si); w.writerow(['Punto', 'BMB Ant', 'BMB Nuevo', 'Fecha', 'Asesor', 'Distancia'])
     for r in cursor: w.writerow([r.get('pv'), r.get('bmb_actual'), r.get('bmb_propuesto'), r.get('fecha'), r.get('n_documento'), r.get('distancia_m')])
     return Response(si.getvalue(), mimetype='text/csv', headers={"Content-Disposition":"attachment;filename=reporte.csv"})
 
@@ -299,7 +237,7 @@ def login():
     if request.method == 'POST':
         u = usuarios_col.find_one({"usuario": request.form.get('u'), "password": request.form.get('p')})
         if u: session.update({'user_id': str(u['_id']), 'user_name': u['nombre_completo'], 'role': u.get('rol', 'admin')}); return redirect('/')
-    return render_template_string(f"<html><head>{CSS_GERENCIAL}</head><body style='display:flex; justify-content:center; align-items:center; height:100vh;'><div class='card-mini' style='width:300px;'><h3>Acceso Nestlé BI</h3><form method='POST'><input type='text' name='u' placeholder='Usuario'><input type='password' name='p' placeholder='Clave'><button class='btn-g btn-primary' style='width:100%'>Entrar</button></form></div></body></html>")
+    return render_template_string(f"<html><head>{CSS_GERENCIAL}</head><body style='display:flex; justify-content:center; align-items:center; height:100vh;'><div class='card-mini' style='width:300px;'><h3>Acceso</h3><form method='POST'><input type='text' name='u' placeholder='Usuario'><input type='password' name='p' placeholder='Clave'><button class='btn-g btn-primary' style='width:100%'>Entrar</button></form></div></body></html>")
 
 @app.route('/logout')
 def logout(): session.clear(); return redirect('/login')
