@@ -160,7 +160,7 @@ HTML_SISTEMA = """
             
             <label style="font-size:12px; color:gray; margin-left:5px;">Estado de Visita:</label>
             <select id="f_estado">
-                <option value="Visita Exitosa">Visita Exitosa</option>
+                <option value="Flojera">Flojera</option>
                 <option value="Punto Cerrado">Punto Cerrado</option>
                 <option value="Fuera de Rango">Fuera de Rango</option>
                 <option value="Cambio de BMB">Cambio de BMB</option>
