@@ -165,6 +165,8 @@ HTML_SISTEMA = """
                 <option value="Fuera de Rango">Fuera de Rango</option>
                 <option value="Cambio de BMB">Cambio de BMB</option>
                 <option value="Maquina Retirada">Maquina Retirada</option>
+                <option value="Cambio de BMB por Fauna">Cambio de BMB por Fauna</option>
+                <option value="Cambio de BMB Comercial">Cambio de BMB Comercial</option>
                 <option value="Error App Trade">Error App Trade</option>
             </select>
 
